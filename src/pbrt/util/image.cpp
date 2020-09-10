@@ -989,6 +989,10 @@ bool Image::Write(const std::string &name, const ImageMetadata &metadata) const 
         return image->WritePFM(name, metadata);
     else if (HasExtension(name, "png"))
         return image->WritePNG(name, metadata);
+    // P3D updates
+    else if (HasExtension(name, "rawls") || HasExtension(name, "rawls_20"))
+        return image->WriteRAWLS(name, metadata);
+    // P3D updates
     else {
         Error("%s: no support for writing images with this extension", name);
         return false;
@@ -1436,6 +1440,103 @@ bool Image::WritePNG(const std::string &name, const ImageMetadata &metadata) con
     }
     return true;
 }
+
+// P3D updates
+bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) const {
+    unsigned int error = 0;
+    int nOutOfGamut = 0;
+
+    if (NChannels() == 3) {
+
+        unsigned nChannels = NChannels();
+        // It may not actually be RGB, but that's what PNG's going to
+        // assume..
+
+        // Part 1
+        // using information write image header
+        std::ofstream outputFile(name, std::ios::out | std::ios::binary);
+
+        outputFile << "IHDR" << std::endl;
+        outputFile << ((sizeof(resolution.x) + sizeof(resolution.y) + sizeof(nChannels)))  << std::endl;
+        outputFile.write((char *) &resolution.x, sizeof(resolution.x));
+        outputFile.write((char *) &resolution.y, sizeof(resolution.y));
+        outputFile.write((char *) &nChannels, sizeof(nChannels));
+        outputFile << std::endl;
+
+        // RenderInfo* renderInfo = pbrtRenderInfo();
+        // // Part 2
+        // // Comments (usefull information about scene and generation data used)
+        outputFile << "COMMENTS" << std::endl;
+        // outputFile << "#Samples " << PbrtOptions.samples << std::endl;
+        // outputFile << "#Filter " << renderInfo->FilterName << std::endl;
+        // outputFile << "  #params " << renderInfo->FilterParams.ToString() << std::endl;
+        // outputFile << "#Film " << renderInfo->FilmName << std::endl;
+        // outputFile << "  #params " << renderInfo->FilmParams.ToString() << std::endl;
+        // outputFile << "#Sampler " << renderInfo->SamplerName << std::endl;
+        // outputFile << " #params " << renderInfo->SamplerParams.ToString() << std::endl;
+        // outputFile << "#Accelerator " << renderInfo->AcceleratorName << std::endl;
+        // outputFile << "  #params " << renderInfo->AcceleratorParams.ToString() << std::endl;
+        // outputFile << "#Integrator " << renderInfo->IntegratorName << std::endl;
+        // outputFile << "  #params " << renderInfo->IntegratorParams.ToString() << std::endl;
+        // outputFile << "#Camera " << renderInfo->CameraName << std::endl;
+        // outputFile << "  #params " << renderInfo->CameraParams.ToString() << std::endl;
+        // outputFile << "#LookAt ";
+        // outputFile << renderInfo->LookAtParamsInfo.Eye.x << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Eye.y << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Eye.z << " ";
+        // outputFile << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Target.x << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Target.y << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Target.z << " ";
+        // outputFile << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Up.x << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Up.y << " ";
+        // outputFile << renderInfo->LookAtParamsInfo.Up.z;
+        // outputFile << std::endl;
+        
+
+        // Part 3
+        // using data information write specific chunck
+        outputFile << "DATA" << std::endl;
+        outputFile << (sizeof(float) * resolution.x * resolution.y * nChannels) << std::endl;
+
+        std::unique_ptr<uint8_t[]> rgb8 =
+            std::make_unique<uint8_t[]>(3 * resolution.x * resolution.y);
+
+        for (int y = 0; y < resolution.y; ++y){
+            for (int x = 0; x < resolution.x; ++x) {
+                for (int c = 0; c < NChannels(); ++c) {
+            
+                    Float dither = -.5f + BlueNoise(c, x, y);
+                    Float v = GetChannel({x, y}, c);
+
+                    if (v < 0 || v > 1)
+                        ++nOutOfGamut;
+
+                    rgb8[3 * (y * resolution.x + x) + c] = LinearToSRGB8(v, dither);
+                    
+                    outputFile.write((char *) &rgb8[3 * (y * resolution.x + x) + c], sizeof(rgb8[3 * (y * resolution.x + x) + c]));
+                }
+            }
+            outputFile << std::endl;
+        }
+        outputFile.close();
+
+    } else {
+        Error("Error when writing RAWLS \"%s\": %s", name);
+    }
+
+    if (nOutOfGamut > 0)
+        Warning("%s: %d out of gamut pixel channels clamped to [0,1].", name,
+                nOutOfGamut);
+
+    if (error != 0) {
+        Error("Error writing RAWLS \"%s\": %s", name, lodepng_error_text(error));
+        return false;
+    }
+    return true;
+}
+// P3D updates
 
 ///////////////////////////////////////////////////////////////////////////
 // PFM Function Definitions

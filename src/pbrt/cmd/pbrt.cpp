@@ -179,7 +179,14 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "seed", &options.seed, onError) ||
             ParseArg(&argv, "spp", &options.pixelSamples, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
-            ParseArg(&argv, "upgrade", &options.upgrade, onError)) {
+            ParseArg(&argv, "upgrade", &options.upgrade, onError) ||
+            //P3D updates
+            ParseArg(&argv, "folder", &options.folder, onError) ||
+            ParseArg(&argv, "digits", &options.digits, onError) ||
+            ParseArg(&argv, "images", &options.images, onError) ||
+            ParseArg(&argv, "startindex", &options.startindex, onError))
+            //P3D updates
+            {
             // success
         } else if ((strcmp(*argv, "--help") == 0) || (strcmp(*argv, "-help") == 0) ||
                    (strcmp(*argv, "-h") == 0)) {

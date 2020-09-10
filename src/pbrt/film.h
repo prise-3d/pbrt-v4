@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <sys/stat.h>
 
 namespace pbrt {
 
@@ -232,6 +233,11 @@ class RGBFilm : public FilmBase {
     void AddSplat(const Point2f &p, SampledSpectrum v, const SampledWavelengths &lambda);
 
     void WriteImage(ImageMetadata metadata, Float splatScale = 1);
+
+    // P3D updates
+    void WriteImageTemp(ImageMetadata metadata, unsigned index, Float splatScale = 1);
+    // P3D updates
+
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
     std::string ToString() const;
@@ -307,6 +313,11 @@ class GBufferFilm : public FilmBase {
     }
 
     void WriteImage(ImageMetadata metadata, Float splatScale = 1);
+
+    // P3D updates
+    void WriteImageTemp(ImageMetadata metadata, unsigned index, Float splatScale = 1);
+    // P3D updates
+
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
     std::string ToString() const;

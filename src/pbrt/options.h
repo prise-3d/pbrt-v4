@@ -43,6 +43,13 @@ struct PBRTOptions : BasicOptions {
     pstd::optional<Bounds2f> cropWindow;
     pstd::optional<Bounds2i> pixelBounds;
 
+    // P3D updates
+    std::string folder = "temp";
+    int digits = 6; // number of digits used to save index generated image
+    int images = 1; // number of generated image (at least one)
+    int startindex = 0; // start image index (if need of relaunch pbrt with specific image index)
+    // P3D updates
+
     std::string ToString() const;
 };
 

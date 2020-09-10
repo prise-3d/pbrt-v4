@@ -40,6 +40,13 @@ void FilmHandle::WriteImage(ImageMetadata metadata, Float splatScale) {
     return DispatchCPU(write);
 }
 
+// P3D updates
+void FilmHandle::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splatScale) {
+    auto write = [&](auto ptr) { return ptr->WriteImageTemp(metadata, i, splatScale); };
+    return DispatchCPU(write);
+}
+// P3D updates
+
 Image FilmHandle::GetImage(ImageMetadata *metadata, Float splatScale) {
     auto get = [&](auto ptr) { return ptr->GetImage(metadata, splatScale); };
     return DispatchCPU(get);
@@ -629,6 +636,39 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
     image.Write(filename, metadata);
 }
 
+// P3D updates
+void RGBFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splatScale) {
+
+    Image image = GetImage(&metadata, splatScale);
+    LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
+
+    // define delimiter to split image name    
+    std::string delimiter = ".";
+    std::string output_folder = Options->folder;
+    
+    // find prefix and postfix information from `filename`
+    std::string filename_prefix = filename.substr(0, filename.find(delimiter));
+    std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
+
+    // create custom image
+    std::string indexStr(std::to_string(0));
+
+    while(indexStr.length() < Options->digits){
+        indexStr = "0" + indexStr;
+    }
+
+    // build folder
+    std::string folder_image = std::string(output_folder + "/" + filename_prefix);
+    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    
+    // TODO : improve (recursively create folders)
+    mkdir(output_folder.c_str(), 0775);
+    mkdir(folder_image.c_str(), 0775);
+
+    image.Write(temp_filename, metadata);
+}
+// P3D updates
+
 Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     // Convert image to RGB and compute final pixel values
     LOG_VERBOSE("Converting image to RGB and computing final weighted pixel values");
@@ -874,6 +914,39 @@ void GBufferFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
     LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
     image.Write(filename, metadata);
 }
+
+// P3D updates
+void GBufferFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splatScale) {
+    Image image = GetImage(&metadata, splatScale);
+    LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
+
+    // define delimiter to split image name    
+    std::string delimiter = ".";
+    std::string output_folder = Options->folder;
+    
+    // find prefix and postfix information from `filename`
+    std::string filename_prefix = filename.substr(0, filename.find(delimiter));
+    std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
+
+    // create custom image
+    std::string indexStr(std::to_string(0));
+
+    while(indexStr.length() < Options->digits){
+        indexStr = "0" + indexStr;
+    }
+
+    // P3DTODO : find where spp is stored
+    // build folder
+    std::string folder_image = std::string(output_folder + "/" + filename_prefix);
+    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    
+    // TODO : improve (recursively create folders)
+    mkdir(output_folder.c_str(), 0775);
+    mkdir(folder_image.c_str(), 0775);
+
+    image.Write(temp_filename, metadata);
+}
+// P3D updates
 
 Image GBufferFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     // Convert image to RGB and compute final pixel values

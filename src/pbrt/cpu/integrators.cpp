@@ -111,6 +111,7 @@ Integrator::~Integrator() {}
 
 // ImageTileIntegrator Method Definitions
 void ImageTileIntegrator::Render() {
+
     // Handle debugStart, if set
     if (!Options->debugStart.empty()) {
         pstd::optional<std::vector<int>> c = SplitStringToInts(Options->debugStart, ',');
@@ -133,135 +134,151 @@ void ImageTileIntegrator::Render() {
         return;
     }
 
-    thread_local Point2i threadPixel;
-    thread_local int threadSampleIndex;
-    CheckCallbackScope _([&]() {
-        return StringPrintf("Rendering failed at pixel (%d, %d) sample %d. Debug with "
-                            "\"--debugstart %d,%d,%d\"\n",
-                            threadPixel.x, threadPixel.y, threadSampleIndex,
-                            threadPixel.x, threadPixel.y, threadSampleIndex);
-    });
+    // P3D updates
+    for (unsigned i; i < Options->images; i++){
 
-    // Declare common variables for rendering image in tiles
-    std::vector<ScratchBuffer> scratchBuffers;
-    for (int i = 0; i < MaxThreadIndex(); ++i)
-        scratchBuffers.push_back(ScratchBuffer(65536));
+        std::cout << "Rendering image " << (i + 1) << " of " << Options->images << std::endl;
 
-    std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
-
-    Bounds2i pixelBounds = camera.GetFilm().PixelBounds();
-    int spp = samplerPrototype.SamplesPerPixel();
-    ProgressReporter progress(int64_t(spp) * pixelBounds.Area(), "Rendering",
-                              Options->quiet);
-
-    int waveStart = 0, waveEnd = 1, nextWaveSize = 1;
-
-    if (Options->recordPixelStatistics)
-        StatsEnablePixelStats(pixelBounds,
-                              RemoveExtension(camera.GetFilm().GetFilename()));
-    // Handle MSE referene image, if provided
-    pstd::optional<Image> referenceImage;
-    FILE *mseOutFile = nullptr;
-    if (!Options->mseReferenceImage.empty()) {
-        auto mse = Image::Read(Options->mseReferenceImage);
-        referenceImage = mse.image;
-
-        Bounds2i msePixelBounds =
-            mse.metadata.pixelBounds
-                ? *mse.metadata.pixelBounds
-                : Bounds2i(Point2i(0, 0), referenceImage->Resolution());
-        if (!Inside(pixelBounds, msePixelBounds))
-            ErrorExit("Output image pixel bounds %s aren't inside the MSE "
-                      "image's pixel bounds %s.",
-                      pixelBounds, msePixelBounds);
-
-        // Transform the pixelBounds of the image we're rendering to the
-        // coordinate system with msePixelBounds.pMin at the origin, which
-        // in turn gives us the section of the MSE image to crop. (This is
-        // complicated by the fact that Image doesn't support pixel
-        // bounds...)
-        Bounds2i cropBounds(Point2i(pixelBounds.pMin - msePixelBounds.pMin),
-                            Point2i(pixelBounds.pMax - msePixelBounds.pMin));
-        *referenceImage = referenceImage->Crop(cropBounds);
-        CHECK_EQ(referenceImage->Resolution(), Point2i(pixelBounds.Diagonal()));
-
-        mseOutFile = fopen(Options->mseReferenceOutput.c_str(), "w");
-        if (!mseOutFile)
-            ErrorExit("%s: %s", Options->mseReferenceOutput, ErrorString());
-    }
-
-    // Connect to display server if needed
-    if (!Options->displayServer.empty()) {
-        FilmHandle film = camera.GetFilm();
-        DisplayDynamic(film.GetFilename(), Point2i(pixelBounds.Diagonal()),
-                       {"R", "G", "B"},
-                       [=](Bounds2i b, pstd::span<pstd::span<Float>> displayValue) {
-                           int index = 0;
-                           for (Point2i p : b) {
-                               RGB rgb = film.GetPixelRGB(pixelBounds.pMin + p);
-                               for (int c = 0; c < 3; ++c)
-                                   displayValue[c][index] = rgb[c];
-                               ++index;
-                           }
-                       });
-    }
-
-    // Render image in waves
-    while (waveStart < spp) {
-        // Render current wave's image tiles in parallel
-        ParallelFor2D(pixelBounds, [&](Bounds2i tileBounds) {
-            // Render image tile given by _tileBounds_
-            ScratchBuffer &scratchBuffer = scratchBuffers[ThreadIndex];
-            SamplerHandle &sampler = samplers[ThreadIndex];
-            PBRT_DBG("Starting image tile (%d,%d)-(%d,%d) waveStart %d, waveEnd %d\n",
-                     tileBounds.pMin.x, tileBounds.pMin.y, tileBounds.pMax.x,
-                     tileBounds.pMax.y, waveStart, waveEnd);
-            for (Point2i pPixel : tileBounds) {
-                StatsReportPixelStart(pPixel);
-                threadPixel = pPixel;
-                // Render samples in pixel _pPixel_
-                for (int sampleIndex = waveStart; sampleIndex < waveEnd; ++sampleIndex) {
-                    threadSampleIndex = sampleIndex;
-                    sampler.StartPixelSample(pPixel, sampleIndex);
-                    EvaluatePixelSample(pPixel, sampleIndex, sampler, scratchBuffer);
-                    scratchBuffer.Reset();
-                }
-
-                StatsReportPixelEnd(pPixel);
-            }
-            PBRT_DBG("Finished image tile (%d,%d)-(%d,%d)\n", tileBounds.pMin.x,
-                     tileBounds.pMin.y, tileBounds.pMax.x, tileBounds.pMax.y);
-            progress.Update((waveEnd - waveStart) * tileBounds.Area());
+        thread_local Point2i threadPixel;
+        thread_local int threadSampleIndex;
+        CheckCallbackScope _([&]() {
+            return StringPrintf("Rendering failed at pixel (%d, %d) sample %d. Debug with "
+                                "\"--debugstart %d,%d,%d\"\n",
+                                threadPixel.x, threadPixel.y, threadSampleIndex,
+                                threadPixel.x, threadPixel.y, threadSampleIndex);
         });
 
-        // Update start and end wave
-        waveStart = waveEnd;
-        waveEnd = std::min(spp, waveEnd + nextWaveSize);
-        if (!referenceImage)
-            nextWaveSize = std::min(2 * nextWaveSize, 64);
+        // Declare common variables for rendering image in tiles
+        std::vector<ScratchBuffer> scratchBuffers;
+        for (int i = 0; i < MaxThreadIndex(); ++i)
+            scratchBuffers.push_back(ScratchBuffer(65536));
 
-        // Write current image to disk
-        LOG_VERBOSE("Writing image with spp = %d", waveStart);
-        ImageMetadata metadata;
-        metadata.renderTimeSeconds = progress.ElapsedSeconds();
-        metadata.samplesPerPixel = waveStart;
-        if (referenceImage) {
-            ImageMetadata filmMetadata;
-            Image filmImage = camera.GetFilm().GetImage(&filmMetadata, 1.f / waveStart);
-            ImageChannelValues mse =
-                filmImage.MSE(filmImage.AllChannelsDesc(), *referenceImage);
-            fprintf(mseOutFile, "%d, %.9g\n", waveStart, mse.Average());
-            metadata.MSE = mse.Average();
-            fflush(mseOutFile);
+        std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
+
+        Bounds2i pixelBounds = camera.GetFilm().PixelBounds();
+        int spp = samplerPrototype.SamplesPerPixel();
+        ProgressReporter progress(int64_t(spp) * pixelBounds.Area(), "Rendering",
+                                Options->quiet);
+
+        int waveStart = 0, waveEnd = 1, nextWaveSize = 1;
+
+        if (Options->recordPixelStatistics)
+            StatsEnablePixelStats(pixelBounds,
+                                RemoveExtension(camera.GetFilm().GetFilename()));
+        // Handle MSE referene image, if provided
+        pstd::optional<Image> referenceImage;
+        FILE *mseOutFile = nullptr;
+        if (!Options->mseReferenceImage.empty()) {
+            auto mse = Image::Read(Options->mseReferenceImage);
+            referenceImage = mse.image;
+
+            Bounds2i msePixelBounds =
+                mse.metadata.pixelBounds
+                    ? *mse.metadata.pixelBounds
+                    : Bounds2i(Point2i(0, 0), referenceImage->Resolution());
+            if (!Inside(pixelBounds, msePixelBounds))
+                ErrorExit("Output image pixel bounds %s aren't inside the MSE "
+                        "image's pixel bounds %s.",
+                        pixelBounds, msePixelBounds);
+
+            // Transform the pixelBounds of the image we're rendering to the
+            // coordinate system with msePixelBounds.pMin at the origin, which
+            // in turn gives us the section of the MSE image to crop. (This is
+            // complicated by the fact that Image doesn't support pixel
+            // bounds...)
+            Bounds2i cropBounds(Point2i(pixelBounds.pMin - msePixelBounds.pMin),
+                                Point2i(pixelBounds.pMax - msePixelBounds.pMin));
+            *referenceImage = referenceImage->Crop(cropBounds);
+            CHECK_EQ(referenceImage->Resolution(), Point2i(pixelBounds.Diagonal()));
+
+            mseOutFile = fopen(Options->mseReferenceOutput.c_str(), "w");
+            if (!mseOutFile)
+                ErrorExit("%s: %s", Options->mseReferenceOutput, ErrorString());
         }
-        camera.InitMetadata(&metadata);
-        camera.GetFilm().WriteImage(metadata, 1.0f / waveStart);
-    }
 
-    if (mseOutFile)
-        fclose(mseOutFile);
-    progress.Done();
-    LOG_VERBOSE("Rendering finished");
+        // Connect to display server if needed
+        if (!Options->displayServer.empty()) {
+            FilmHandle film = camera.GetFilm();
+            DisplayDynamic(film.GetFilename(), Point2i(pixelBounds.Diagonal()),
+                        {"R", "G", "B"},
+                        [=](Bounds2i b, pstd::span<pstd::span<Float>> displayValue) {
+                            int index = 0;
+                            for (Point2i p : b) {
+                                RGB rgb = film.GetPixelRGB(pixelBounds.pMin + p);
+                                for (int c = 0; c < 3; ++c)
+                                    displayValue[c][index] = rgb[c];
+                                ++index;
+                            }
+                        });
+        }
+
+        ImageMetadata metadata;
+
+        // Render image in waves
+        while (waveStart < spp) {
+            // Render current wave's image tiles in parallel
+            ParallelFor2D(pixelBounds, [&](Bounds2i tileBounds) {
+                // Render image tile given by _tileBounds_
+                ScratchBuffer &scratchBuffer = scratchBuffers[ThreadIndex];
+                SamplerHandle &sampler = samplers[ThreadIndex];
+                PBRT_DBG("Starting image tile (%d,%d)-(%d,%d) waveStart %d, waveEnd %d\n",
+                        tileBounds.pMin.x, tileBounds.pMin.y, tileBounds.pMax.x,
+                        tileBounds.pMax.y, waveStart, waveEnd);
+                for (Point2i pPixel : tileBounds) {
+                    StatsReportPixelStart(pPixel);
+                    threadPixel = pPixel;
+                    // Render samples in pixel _pPixel_
+                    for (int sampleIndex = waveStart; sampleIndex < waveEnd; ++sampleIndex) {
+                        threadSampleIndex = sampleIndex;
+                        sampler.StartPixelSample(pPixel, sampleIndex);
+                        EvaluatePixelSample(pPixel, sampleIndex, sampler, scratchBuffer);
+                        scratchBuffer.Reset();
+                    }
+
+                    StatsReportPixelEnd(pPixel);
+                }
+                PBRT_DBG("Finished image tile (%d,%d)-(%d,%d)\n", tileBounds.pMin.x,
+                        tileBounds.pMin.y, tileBounds.pMax.x, tileBounds.pMax.y);
+                progress.Update((waveEnd - waveStart) * tileBounds.Area());
+            });
+
+            // Update start and end wave
+            waveStart = waveEnd;
+            waveEnd = std::min(spp, waveEnd + nextWaveSize);
+            if (!referenceImage)
+                nextWaveSize = std::min(2 * nextWaveSize, 64);
+
+            // Write current image to disk
+            LOG_VERBOSE("Writing image with spp = %d", waveStart);
+            
+            metadata.renderTimeSeconds = progress.ElapsedSeconds();
+            metadata.samplesPerPixel = waveStart;
+            if (referenceImage) {
+                ImageMetadata filmMetadata;
+                Image filmImage = camera.GetFilm().GetImage(&filmMetadata, 1.f / waveStart);
+                ImageChannelValues mse =
+                    filmImage.MSE(filmImage.AllChannelsDesc(), *referenceImage);
+                fprintf(mseOutFile, "%d, %.9g\n", waveStart, mse.Average());
+                metadata.MSE = mse.Average();
+                fflush(mseOutFile);
+            }
+            camera.InitMetadata(&metadata);
+
+            // P3D updates : enable using of preview if only one image
+            if (Options->images == 1)
+                camera.GetFilm().WriteImage(metadata, 1.0f / waveStart);
+        }
+
+        // P3D updates : run in this way only if there is multiple runs
+        if (Options->images != 1)
+            camera.GetFilm().WriteImageTemp(metadata, i);
+
+        if (mseOutFile)
+            fclose(mseOutFile);
+        progress.Done();
+        LOG_VERBOSE("Rendering image %s of %s finished", (i + 1), Options->images);
+    }
+    // P3D updates
 }
 
 // RayIntegrator Method Definitions

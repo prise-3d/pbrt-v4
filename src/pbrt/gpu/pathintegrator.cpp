@@ -562,80 +562,89 @@ void GPUPathIntegrator::HandleRayFoundEmission(int depth) {
 }
 
 void GPURender(ParsedScene &scene) {
-#ifdef PBRT_IS_WINDOWS
-    // NOTE: on Windows, where only basic unified memory is upported, the
-    // GPUPathIntegrator itself is *not* allocated using the unified memory
-    // allocator so that the CPU can access the values of its members
-    // (e.g. maxDepth) concurrently while the GPU is rendering.  In turn,
-    // the lambda capture for GPU kernels has to capture *this by value (see
-    // the definition of PBRT_GPU_LAMBDA in gpulaunch.h.).
-    GPUPathIntegrator *integrator = new GPUPathIntegrator(gpuMemoryAllocator, scene);
-#else
-    // With more capable unified memory, the GPUPathIntegrator can live in
-    // unified memory and some cudaMemAdvise calls, to come shortly, let us
-    // have fast read-only access to it on the CPU.
-    GPUPathIntegrator *integrator =
-        gpuMemoryAllocator.new_object<GPUPathIntegrator>(gpuMemoryAllocator, scene);
-#endif
 
-    int deviceIndex;
-    CUDA_CHECK(cudaGetDevice(&deviceIndex));
-    int hasConcurrentManagedAccess;
-    CUDA_CHECK(cudaDeviceGetAttribute(&hasConcurrentManagedAccess,
-                                      cudaDevAttrConcurrentManagedAccess, deviceIndex));
+    #ifdef PBRT_IS_WINDOWS
+        // NOTE: on Windows, where only basic unified memory is upported, the
+        // GPUPathIntegrator itself is *not* allocated using the unified memory
+        // allocator so that the CPU can access the values of its members
+        // (e.g. maxDepth) concurrently while the GPU is rendering.  In turn,
+        // the lambda capture for GPU kernels has to capture *this by value (see
+        // the definition of PBRT_GPU_LAMBDA in gpulaunch.h.).
+        GPUPathIntegrator *integrator = new GPUPathIntegrator(gpuMemoryAllocator, scene);
+    #else
+        // With more capable unified memory, the GPUPathIntegrator can live in
+        // unified memory and some cudaMemAdvise calls, to come shortly, let us
+        // have fast read-only access to it on the CPU.
+        GPUPathIntegrator *integrator =
+            gpuMemoryAllocator.new_object<GPUPathIntegrator>(gpuMemoryAllocator, scene);
+    #endif
 
-    // Copy all of the scene data structures over to GPU memory.  This
-    // ensures that there isn't a big performance hitch for the first batch
-    // of rays as that stuff is copied over on demand.
-    if (hasConcurrentManagedAccess) {
-        // Set things up so that we can still have read from the
-        // GPUPathIntegrator struct on the CPU without hurting
-        // performance. (This makes it possible to use the values of things
-        // like GPUPathIntegrator::haveSubsurface to conditionally launch
-        // kernels according to what's in the scene...)
-        CUDA_CHECK(cudaMemAdvise(integrator, sizeof(*integrator),
-                                 cudaMemAdviseSetReadMostly, /* ignored argument */0));
-        CUDA_CHECK(cudaMemAdvise(integrator, sizeof(*integrator),
-                                 cudaMemAdviseSetPreferredLocation, deviceIndex));
+        int deviceIndex;
+        CUDA_CHECK(cudaGetDevice(&deviceIndex));
+        int hasConcurrentManagedAccess;
+        CUDA_CHECK(cudaDeviceGetAttribute(&hasConcurrentManagedAccess,
+                                        cudaDevAttrConcurrentManagedAccess, deviceIndex));
 
         // Copy all of the scene data structures over to GPU memory.  This
         // ensures that there isn't a big performance hitch for the first batch
         // of rays as that stuff is copied over on demand.
-        CUDATrackedMemoryResource *mr =
-            dynamic_cast<CUDATrackedMemoryResource *>(gpuMemoryAllocator.resource());
-        CHECK(mr != nullptr);
-        mr->PrefetchToGPU();
-    } else {
-        // TODO: on systems with basic unified memory, just launching a
-        // kernel should cause everything to be copied over. Is an empty
-        // kernel sufficient?
+        if (hasConcurrentManagedAccess) {
+            // Set things up so that we can still have read from the
+            // GPUPathIntegrator struct on the CPU without hurting
+            // performance. (This makes it possible to use the values of things
+            // like GPUPathIntegrator::haveSubsurface to conditionally launch
+            // kernels according to what's in the scene...)
+            CUDA_CHECK(cudaMemAdvise(integrator, sizeof(*integrator),
+                                    cudaMemAdviseSetReadMostly, /* ignored argument */0));
+            CUDA_CHECK(cudaMemAdvise(integrator, sizeof(*integrator),
+                                    cudaMemAdviseSetPreferredLocation, deviceIndex));
+
+            // Copy all of the scene data structures over to GPU memory.  This
+            // ensures that there isn't a big performance hitch for the first batch
+            // of rays as that stuff is copied over on demand.
+            CUDATrackedMemoryResource *mr =
+                dynamic_cast<CUDATrackedMemoryResource *>(gpuMemoryAllocator.resource());
+            CHECK(mr != nullptr);
+            mr->PrefetchToGPU();
+        } else {
+            // TODO: on systems with basic unified memory, just launching a
+            // kernel should cause everything to be copied over. Is an empty
+            // kernel sufficient?
+        }
+
+    // P3D updates
+    for (unsigned i = Options->startindex; i < Options->images; i++){
+
+        std::cout << "Rendering image " << (i + 1) << " of " << Options->images << std::endl;
+
+        ///////////////////////////////////////////////////////////////////////////
+        // Render!
+        Timer timer;
+        ImageMetadata metadata;
+        integrator->Render(&metadata);
+
+        LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
+
+        CUDA_CHECK(cudaProfilerStop());
+
+        if (!Options->quiet) {
+            ReportKernelStats();
+
+            Printf("GPU Statistics:\n");
+            Printf("%s\n", integrator->stats->Print());
+        }
+
+        metadata.renderTimeSeconds = timer.ElapsedSeconds();
+        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+
+        std::vector<GPULogItem> logs = ReadGPULogs();
+        for (const auto &item : logs)
+            Log(item.level, item.file, item.line, item.message);
+
+        integrator->film.WriteImageTemp(metadata, i);
+        integrator->film.clear();
     }
-
-    ///////////////////////////////////////////////////////////////////////////
-    // Render!
-    Timer timer;
-    ImageMetadata metadata;
-    integrator->Render(&metadata);
-
-    LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
-
-    CUDA_CHECK(cudaProfilerStop());
-
-    if (!Options->quiet) {
-        ReportKernelStats();
-
-        Printf("GPU Statistics:\n");
-        Printf("%s\n", integrator->stats->Print());
-    }
-
-    metadata.renderTimeSeconds = timer.ElapsedSeconds();
-    metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-
-    std::vector<GPULogItem> logs = ReadGPULogs();
-    for (const auto &item : logs)
-        Log(item.level, item.file, item.line, item.message);
-
-    integrator->film.WriteImage(metadata);
+    // P3D updates
 }
 
 GPUPathIntegrator::Stats::Stats(int maxDepth, Allocator alloc)
