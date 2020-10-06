@@ -164,6 +164,7 @@ class FilmBase {
 // RGBFilm Definition
 class RGBFilm : public FilmBase {
   public:
+
     // RGBFilm Public Methods
     PBRT_CPU_GPU
     void AddSample(const Point2i &pFilm, SampledSpectrum L,
@@ -191,8 +192,31 @@ class RGBFilm : public FilmBase {
 
         // }
 
-        // P3D Updates
-        pixel.Add(rgb, weight);
+        // P3D Updates MON pixel
+        if (pixel.rvalues.size() < pixel.k){
+
+            pixel.rvalues.push_back(rgb[0]);
+            pixel.gvalues.push_back(rgb[1]);
+            pixel.bvalues.push_back(rgb[2]);
+
+            pixel.weightsSum.push_back(weight);
+            
+            // counters.push_back(1);
+        }
+        else{
+            pixel.rvalues.at(pixel.index) += rgb[0];
+            pixel.gvalues.at(pixel.index) += rgb[1];
+            pixel.bvalues.at(pixel.index) += rgb[2];
+
+            pixel.weightsSum.at(pixel.index) += weight;
+
+            // counters.at(index) += 1;
+        }
+
+        pixel.index += 1;
+
+        if (pixel.index >= pixel.k)
+            pixel.index = 0;
         // P3D Updates
         // pixel.weightSum += weight;
     }
@@ -210,10 +234,18 @@ class RGBFilm : public FilmBase {
         //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
         //Float weightSum = pixel.weightSum;
-        std::pair<double*, Float> estimated =  pixel.EstimateRGB();
+        auto restimation = Estimate(pixel.rvalues, pixel.weightsSum);
+        auto gestimation = Estimate(pixel.gvalues, pixel.weightsSum);
+        auto bestimation = Estimate(pixel.bvalues, pixel.weightsSum);
+
+        // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
+        // computed filter weight sum based on each channel
+        Float weightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
+
+        // std::cout << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
         
-        RGB rgb(estimated.first[0], estimated.first[1], estimated.first[2]);
-        Float weightSum = estimated.second;
+        RGB rgb(restimation.first, gestimation.first, bestimation.first);
+        // Float weightSum = estimated.second;
         // P3D Updates
 
         if (weightSum != 0)
@@ -258,6 +290,52 @@ class RGBFilm : public FilmBase {
 
     std::string ToString() const;
 
+    PBRT_CPU_GPU
+    std::pair<Float, Float> Estimate(std::vector<Float> cvalues, std::vector<Float> weightsSum) const {
+            
+        // TODO : find associated weightsum index and use it
+        std::vector<Float> means;
+
+        unsigned nElements = cvalues.size();
+
+        for (unsigned i = 0; i < nElements; i++){
+            // remove dividing by counters as we use filterweightsum later
+            means.push_back(cvalues[i]);
+        }
+
+        // Vector to store element 
+        // with respective present index 
+        std::vector<std::pair<Float, unsigned> > vp; 
+    
+        // Inserting element in pair vector 
+        // to keep track of previous indexes 
+        for (unsigned i = 0; i < nElements; i++) { 
+            vp.push_back(std::make_pair(means[i], i)); 
+        }
+
+        std::sort(vp.begin(), vp.end());
+
+        Float weight, mean;
+        // compute median from means
+        if (nElements % 2 == 1){
+            unsigned unsortedIndex = vp[int(nElements/2)].second;
+
+            weight = weightsSum[unsortedIndex];
+            mean = means[unsortedIndex];
+        }
+        else{
+            int k_mean = int(nElements/2);
+            unsigned firstIndex = vp[k_mean - 1].second;
+            unsigned secondIndex = vp[k_mean].second;
+
+            weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+            mean = (means[firstIndex] + means[secondIndex]) / 2;
+        }
+
+        return std::make_pair(mean, weight);
+    }
+
+
   private:
     // RGBFilm::Pixel Definition
     // struct Pixel {
@@ -268,7 +346,6 @@ class RGBFilm : public FilmBase {
     //     VarianceEstimator<Float> varianceEstimator;
     // };
 
-    PBRT_CPU_GPU
     struct PixelMON {
         PixelMON() { 
 
@@ -296,103 +373,6 @@ class RGBFilm : public FilmBase {
 
         // std::vector<unsigned> counters; // number of elements
         std::vector<Float> weightsSum; // number of elements
-
-        PBRT_CPU_GPU
-        std::pair<double*, Float> EstimateRGB() const {
-
-            double rgb[3];
-
-            auto restimation = Estimate(rvalues);
-            rgb[0] = restimation.first;
-
-            auto gestimation = Estimate(gvalues);
-            rgb[1] = gestimation.first; 
-
-            auto bestimation = Estimate(bvalues);
-            rgb[2] = bestimation.first;
-
-            // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
-            // computed filter weight sum based on each channel
-            Float computedWeightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
-
-            // std::cout << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
-            return std::make_pair(rgb, computedWeightSum);
-        }
-
-        std::pair<Float, Float> Estimate(std::vector<Float> cvalues) const {
-            
-            // TODO : find associated weightsum index and use it
-            std::vector<Float> means;
-
-            unsigned nElements = cvalues.size();
-
-            for (unsigned i = 0; i < nElements; i++){
-                // remove dividing by counters as we use filterweightsum later
-                means.push_back(cvalues[i]);
-            }
-
-            // Vector to store element 
-            // with respective present index 
-            std::vector<std::pair<Float, unsigned> > vp; 
-        
-            // Inserting element in pair vector 
-            // to keep track of previous indexes 
-            for (unsigned i = 0; i < nElements; i++) { 
-                vp.push_back(std::make_pair(means[i], i)); 
-            }
-
-            std::sort(vp.begin(), vp.end());
-
-            Float weight, mean;
-            // compute median from means
-            if (nElements % 2 == 1){
-                unsigned unsortedIndex = vp[int(nElements/2)].second;
-
-                weight = weightsSum[unsortedIndex];
-                mean = means[unsortedIndex];
-            }
-            else{
-                int k_mean = int(nElements/2);
-                unsigned firstIndex = vp[k_mean - 1].second;
-                unsigned secondIndex = vp[k_mean].second;
-
-                weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-                mean = (means[firstIndex] + means[secondIndex]) / 2;
-            }
-
-            return std::make_pair(mean, weight);
-        }
-
-        PBRT_CPU_GPU
-        void Add(RGB rgb, Float weight){
-            
-            // let into XYZ
-
-            if (rvalues.size() < k){
-
-                rvalues.push_back(rgb[0]);
-                gvalues.push_back(rgb[1]);
-                bvalues.push_back(rgb[2]);
-
-                weightsSum.push_back(weight);
-                
-                // counters.push_back(1);
-            }
-            else{
-                rvalues.at(index) += rgb[0];
-                gvalues.at(index) += rgb[1];
-                bvalues.at(index) += rgb[2];
-
-                weightsSum.at(index) += weight;
-
-                // counters.at(index) += 1;
-            }
-
-            index += 1;
-
-            if (index >= k)
-                index = 0;
-        }
     };
 
     // RGBFilm Private Members
