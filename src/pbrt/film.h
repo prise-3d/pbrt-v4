@@ -524,7 +524,7 @@ inline bool FilmHandle::UsesVisibleSurface() const {
 }
 
 PBRT_CPU_GPU
-inline RGB FilmHandle::GetPixelRGB(const Point2i &p, Float splatScale) const {
+inline RGB FilmHandle::GetPixelRGB(const Point2i &p, Float splatScale) {
     auto get = [&](auto ptr) { return ptr->GetPixelRGB(p, splatScale); };
     return Dispatch(get);
 }
