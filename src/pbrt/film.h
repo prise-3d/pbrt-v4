@@ -268,6 +268,7 @@ class RGBFilm : public FilmBase {
     //     VarianceEstimator<Float> varianceEstimator;
     // };
 
+    PBRT_CPU_GPU
     struct PixelMON {
         PixelMON() { 
 
@@ -296,7 +297,7 @@ class RGBFilm : public FilmBase {
         // std::vector<unsigned> counters; // number of elements
         std::vector<Float> weightsSum; // number of elements
 
-
+        PBRT_CPU_GPU
         std::pair<double*, Float> EstimateRGB() const {
 
             double rgb[3];
@@ -362,6 +363,7 @@ class RGBFilm : public FilmBase {
             return std::make_pair(mean, weight);
         }
 
+        PBRT_CPU_GPU
         void Add(RGB rgb, Float weight){
             
             // let into XYZ
