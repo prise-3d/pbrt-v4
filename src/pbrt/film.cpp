@@ -594,7 +594,7 @@ RGBFilm::RGBFilm(const Sensor *sensor, const Point2i &resolution,
     filterIntegral = filter.Integral();
     CHECK(!pixelBounds.IsEmpty());
     CHECK(colorSpace != nullptr);
-    filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
+    filmPixelMemory += pixelBounds.Area() * sizeof(PixelMON);
     outputRGBFromCameraRGB = colorSpace->RGBFromXYZ * sensor->XYZFromCameraRGB;
 }
 
@@ -623,7 +623,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum v,
         // Evaluate filter at _pi_ and add splat contribution
         Float wt = filter.Evaluate(Point2f(p - pi - Vector2f(0.5, 0.5)));
         if (wt != 0) {
-            Pixel &pixel = pixels[pi];
+            PixelMON &pixel = pixels[pi];
             for (int i = 0; i < 3; ++i)
                 pixel.splatRGB[i].Add(wt * rgb[i]);
         }
@@ -659,7 +659,7 @@ void RGBFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splatScal
 
     // build folder
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples.value()) + "-" + indexStr + filename_postfix;
     
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);
@@ -688,7 +688,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
     Float varianceSum = 0;
     for (Point2i p : pixelBounds) {
-        const Pixel &pixel = pixels[p];
+        const PixelMON &pixel = pixels[p];
         varianceSum += Float(pixel.varianceEstimator.Variance());
     }
     metadata->estimatedVariance = varianceSum / pixelBounds.Area();
@@ -938,7 +938,7 @@ void GBufferFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splat
     // P3DTODO : find where spp is stored
     // build folder
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples.value()) + "-" + indexStr + filename_postfix;
     
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);

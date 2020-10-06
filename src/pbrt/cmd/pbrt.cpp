@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "folder", &options.folder, onError) ||
             ParseArg(&argv, "digits", &options.digits, onError) ||
             ParseArg(&argv, "images", &options.images, onError) ||
+            ParseArg(&argv, "monk", &options.monk, onError) ||
             ParseArg(&argv, "startindex", &options.startindex, onError))
             //P3D updates
             {
