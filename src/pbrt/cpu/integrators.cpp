@@ -112,32 +112,32 @@ Integrator::~Integrator() {}
 // ImageTileIntegrator Method Definitions
 void ImageTileIntegrator::Render() {
 
-    // Handle debugStart, if set
-    if (!Options->debugStart.empty()) {
-        pstd::optional<std::vector<int>> c = SplitStringToInts(Options->debugStart, ',');
-        if (!c)
-            ErrorExit("Didn't find integer values after --debugstart: %s",
-                      Options->debugStart);
-        if (c->size() != 3)
-            ErrorExit("Didn't find three integer values after --debugstart: %s",
-                      Options->debugStart);
-
-        Point2i pPixel((*c)[0], (*c)[1]);
-        int sampleIndex = (*c)[2];
-
-        ScratchBuffer scratchBuffer(65536);
-        SamplerHandle tileSampler = samplerPrototype.Clone(1, Allocator())[0];
-        tileSampler.StartPixelSample(pPixel, sampleIndex);
-
-        EvaluatePixelSample(pPixel, sampleIndex, tileSampler, scratchBuffer);
-
-        return;
-    }
-
     // P3D updates
-    for (unsigned i; i < Options->images; i++){
+    for (unsigned i = Options->startindex; i < Options->images; i++){
 
         std::cout << "Rendering image " << (i + 1) << " of " << Options->images << std::endl;
+
+        // Handle debugStart, if set
+        if (!Options->debugStart.empty()) {
+            pstd::optional<std::vector<int>> c = SplitStringToInts(Options->debugStart, ',');
+            if (!c)
+                ErrorExit("Didn't find integer values after --debugstart: %s",
+                        Options->debugStart);
+            if (c->size() != 3)
+                ErrorExit("Didn't find three integer values after --debugstart: %s",
+                        Options->debugStart);
+
+            Point2i pPixel((*c)[0], (*c)[1]);
+            int sampleIndex = (*c)[2];
+
+            ScratchBuffer scratchBuffer(65536);
+            SamplerHandle tileSampler = samplerPrototype.Clone(1, Allocator())[0];
+            tileSampler.StartPixelSample(pPixel, sampleIndex);
+
+            EvaluatePixelSample(pPixel, sampleIndex, tileSampler, scratchBuffer);
+
+            return;
+        }
 
         thread_local Point2i threadPixel;
         thread_local int threadSampleIndex;
@@ -270,13 +270,15 @@ void ImageTileIntegrator::Render() {
         }
 
         // P3D updates : run in this way only if there is multiple runs
-        if (Options->images != 1)
+        if (Options->images > 1)
             camera.GetFilm().WriteImageTemp(metadata, i);
 
         if (mseOutFile)
             fclose(mseOutFile);
         progress.Done();
         LOG_VERBOSE("Rendering image %s of %s finished", (i + 1), Options->images);
+
+        // camera.GetFilm().clear();
     }
     // P3D updates
 }

@@ -6,6 +6,7 @@
 
 #include <pbrt/gpu/init.h>
 #include <pbrt/options.h>
+#include <pbrt/parsedscene.h>
 #include <pbrt/shapes.h>
 #include <pbrt/util/check.h>
 #include <pbrt/util/color.h>
@@ -84,6 +85,14 @@ void InitPBRT(const PBRTOptions &opt) {
         ConnectToDisplayServer(Options->displayServer);
 }
 
+void InitScene(const ParsedScene &scene) {
+    
+    RenderInfo = new BasicsRenderInfo;
+    RenderInfo->FilmName = scene.film.name;
+    RenderInfo->FilmParams = scene.film.parameters.ToString();
+}
+
+
 void CleanupPBRT() {
     ForEachThread(ReportThreadStats);
 
@@ -105,6 +114,11 @@ void CleanupPBRT() {
 
     // CO    delete Options;
     Options = nullptr;
+
+    // P3D updates
+    // RenderInfo = nullptr;
+    // P3D updates
+
 }
 
 }  // namespace pbrt

@@ -241,11 +241,37 @@ int main(int argc, char *argv[]) {
         ParsedScene scene;
         ParseFiles(&scene, filenames);
 
+        // scene = new ParsedScene(scene);
+        InitScene(scene);
+
+        // P3D updates
+        // RenderInfo = new BasicsRenderInfo;
+
+        // RenderInfo->FilmName = scene.film.name;
+        // RenderInfo->FilmParams = scene.film.parameters.ToString();
+
+        // RenderInfo->FilterName = scene.filter.name;
+        // RenderInfo->FilterParams = scene.filter.parameters.ToString();
+
+        // RenderInfo->SamplerName = scene.sampler.name;
+        // RenderInfo->SamplerParams = scene.sampler.parameters.ToString();
+        
+        // RenderInfo->AcceleratorName = scene.accelerator.name;
+        // RenderInfo->AcceleratorParams = scene.accelerator.parameters.ToString();
+
+        // RenderInfo->IntegratorName = scene.integrator.name;
+        // RenderInfo->IntegratorParams = scene.integrator.parameters.ToString();
+
+        // RenderInfo->CameraName = scene.camera.name;
+        // RenderInfo->CameraParams = scene.camera.parameters.ToString();
+        // P3D updates
+
         // Render the scene
         if (options.useGPU)
             GPURender(scene);
         else
             CPURender(scene);
+
 
         LOG_VERBOSE("Memory used after post-render cleanup: %s", GetCurrentRSS());
         // Clean up after rendering the scene

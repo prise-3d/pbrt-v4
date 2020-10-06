@@ -651,15 +651,16 @@ void RGBFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splatScal
     std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
 
     // create custom image
-    std::string indexStr(std::to_string(0));
+    std::string indexStr(std::to_string(i));
 
     while(indexStr.length() < Options->digits){
         indexStr = "0" + indexStr;
     }
 
     // build folder
+    int nsamp = *Options->pixelSamples;
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(nsamp) + "-" + indexStr + filename_postfix;
     
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);
@@ -929,7 +930,7 @@ void GBufferFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splat
     std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
 
     // create custom image
-    std::string indexStr(std::to_string(0));
+    std::string indexStr(std::to_string(i));
 
     while(indexStr.length() < Options->digits){
         indexStr = "0" + indexStr;
@@ -937,8 +938,9 @@ void GBufferFilm::WriteImageTemp(ImageMetadata metadata, unsigned i, Float splat
 
     // P3DTODO : find where spp is stored
     // build folder
+    int nsamp = *Options->pixelSamples;
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    std::string temp_filename= output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(nsamp) + "-" + indexStr + filename_postfix;
     
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);

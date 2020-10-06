@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <cstddef>
+#include <string>
 
 #if defined(__CUDA_ARCH__)
 #define PBRT_IS_GPU_CODE
@@ -145,6 +146,9 @@ enum class BxDFFlags;
 struct ImageMetadata;
 struct MediumInterface;
 struct PBRTOptions;
+// P3D update
+class ParsedScene;
+// P3D update
 
 class PiecewiseConstant1D;
 class PiecewiseConstant2D;
@@ -163,9 +167,36 @@ class ScratchBuffer;
 // Define _Allocator_
 using Allocator = pstd::pmr::polymorphic_allocator<std::byte>;
 
+// P3D updates
+struct BasicsRenderInfo {
+
+    // RenderInfo Public Data
+    std::string FilterName;
+    std::string FilterParams;
+    std::string FilmName;
+    std::string FilmParams;
+    std::string SamplerName;
+    std::string SamplerParams;
+    std::string AcceleratorName;
+    std::string AcceleratorParams;
+    std::string IntegratorName;
+    std::string IntegratorParams;
+    std::string CameraName;
+    std::string CameraParams;
+    std::string LookAtParams;
+};
+// P3D updates
+
 // Initialization and Cleanup Function Declarations
 void InitPBRT(const PBRTOptions &opt);
+
+void InitScene(const ParsedScene &scene);
+
 void CleanupPBRT();
+
+// P3D updates
+extern BasicsRenderInfo *RenderInfo;
+// P3D updates
 
 }  // namespace pbrt
 

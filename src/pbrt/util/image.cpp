@@ -2,6 +2,7 @@
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
+
 #include <pbrt/util/image.h>
 
 #include <pbrt/util/bluenoise.h>
@@ -14,6 +15,8 @@
 #include <pbrt/util/print.h>
 #include <pbrt/util/pstd.h>
 #include <pbrt/util/string.h>
+
+#include <pbrt/options.h>
 
 #include <lodepng/lodepng.h>
 #ifndef PBRT_IS_GPU_CODE
@@ -1456,6 +1459,9 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
         // using information write image header
         std::ofstream outputFile(name, std::ios::out | std::ios::binary);
 
+        std::cout << resolution.x << " " << resolution.y << std::endl;
+        std::cout << "N images is " << Options->images << std::endl;
+
         outputFile << "IHDR" << std::endl;
         outputFile << ((sizeof(resolution.x) + sizeof(resolution.y) + sizeof(nChannels)))  << std::endl;
         outputFile.write((char *) &resolution.x, sizeof(resolution.x));
@@ -1463,24 +1469,23 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
         outputFile.write((char *) &nChannels, sizeof(nChannels));
         outputFile << std::endl;
 
-        // RenderInfo* renderInfo = pbrtRenderInfo();
         // // Part 2
         // // Comments (usefull information about scene and generation data used)
         outputFile << "COMMENTS" << std::endl;
-        // outputFile << "#Samples " << PbrtOptions.samples << std::endl;
-        // outputFile << "#Filter " << renderInfo->FilterName << std::endl;
-        // outputFile << "  #params " << renderInfo->FilterParams.ToString() << std::endl;
-        // outputFile << "#Film " << renderInfo->FilmName << std::endl;
-        // outputFile << "  #params " << renderInfo->FilmParams.ToString() << std::endl;
-        // outputFile << "#Sampler " << renderInfo->SamplerName << std::endl;
-        // outputFile << " #params " << renderInfo->SamplerParams.ToString() << std::endl;
-        // outputFile << "#Accelerator " << renderInfo->AcceleratorName << std::endl;
-        // outputFile << "  #params " << renderInfo->AcceleratorParams.ToString() << std::endl;
-        // outputFile << "#Integrator " << renderInfo->IntegratorName << std::endl;
-        // outputFile << "  #params " << renderInfo->IntegratorParams.ToString() << std::endl;
-        // outputFile << "#Camera " << renderInfo->CameraName << std::endl;
-        // outputFile << "  #params " << renderInfo->CameraParams.ToString() << std::endl;
-        // outputFile << "#LookAt ";
+        outputFile << "#Samples " << Options->pixelSamples << std::endl;
+        // outputFile << "#Filter " << Options->renderInfo.FilterName << std::endl;
+        // outputFile << "  #params " << Options->renderInfo.FilterParams.ToString() << std::endl;
+        // outputFile << "#Film " << Options->renderInfo.FilmName << std::endl;
+        // outputFile << "  #params " << Options->renderInfo.FilmParams.ToString() << std::endl;
+        // outputFile << "#Sampler " << Options->renderInfo.SamplerName << std::endl;
+        // outputFile << " #params " << Options->renderInfo.SamplerParams.ToString() << std::endl;
+        // outputFile << "#Accelerator " << Options->renderInfo.AcceleratorName << std::endl;
+        // outputFile << "  #params " << Options->renderInfo.AcceleratorParams.ToString() << std::endl;
+        // outputFile << "#Integrator " << Options->renderInfo.IntegratorName << std::endl;
+        // outputFile << "  #params " << Options->renderInfo.IntegratorParams.ToString() << std::endl;
+        // outputFile << "#Camera " <<Options-> renderInfo.CameraName << std::endl;
+        // outputFile << "  #params " << Options->renderInfo.CameraParams.ToString() << std::endl;
+        // // outputFile << "#LookAt ";
         // outputFile << renderInfo->LookAtParamsInfo.Eye.x << " ";
         // outputFile << renderInfo->LookAtParamsInfo.Eye.y << " ";
         // outputFile << renderInfo->LookAtParamsInfo.Eye.z << " ";
@@ -1492,7 +1497,7 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
         // outputFile << renderInfo->LookAtParamsInfo.Up.x << " ";
         // outputFile << renderInfo->LookAtParamsInfo.Up.y << " ";
         // outputFile << renderInfo->LookAtParamsInfo.Up.z;
-        // outputFile << std::endl;
+        outputFile << std::endl;
         
 
         // Part 3
@@ -1505,17 +1510,18 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
 
         for (int y = 0; y < resolution.y; ++y){
             for (int x = 0; x < resolution.x; ++x) {
-                for (int c = 0; c < NChannels(); ++c) {
+                for (int c = 0; c < nChannels; ++c) {
             
                     Float dither = -.5f + BlueNoise(c, x, y);
                     Float v = GetChannel({x, y}, c);
 
-                    if (v < 0 || v > 1)
-                        ++nOutOfGamut;
+                    // if (v < 0 || v > 1)
+                    //     ++nOutOfGamut;
 
-                    rgb8[3 * (y * resolution.x + x) + c] = LinearToSRGB8(v, dither);
+                    // rgb8[3 * (y * resolution.x + x) + c] = LinearToSRGB8(v, dither);
                     
-                    outputFile.write((char *) &rgb8[3 * (y * resolution.x + x) + c], sizeof(rgb8[3 * (y * resolution.x + x) + c]));
+                    // keep lightness value direclty
+                    outputFile.write((char *) &v, sizeof((float)v));
                 }
             }
             outputFile << std::endl;

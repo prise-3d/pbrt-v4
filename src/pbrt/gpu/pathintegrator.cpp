@@ -642,7 +642,7 @@ void GPURender(ParsedScene &scene) {
             Log(item.level, item.file, item.line, item.message);
 
         integrator->film.WriteImageTemp(metadata, i);
-        integrator->film.clear();
+        // integrator->film.clear();
     }
     // P3D updates
 }
