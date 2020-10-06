@@ -201,16 +201,21 @@ class RGBFilm : public FilmBase {
     bool UsesVisibleSurface() const { return false; }
 
     PBRT_CPU_GPU
-    RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) {
+    RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const {
 
         // P3D Updates
-        PixelMON &pixel = pixels[p];
-        pixel.EstimateRGB(); // update estimated value for rgbSum and weightSum
-        // P3D Updates
+        const PixelMON &pixel = pixels[p];
+        // update estimated value for rgbSum and weightSum
 
-        RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
+        //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
-        Float weightSum = pixel.weightSum;
+        //Float weightSum = pixel.weightSum;
+        std::pair<double*, Float> estimated =  pixel.EstimateRGB();
+        
+        RGB rgb(estimated.first[0], estimated.first[1], estimated.first[2]);
+        Float weightSum = estimated.second;
+        // P3D Updates
+
         if (weightSum != 0)
             rgb /= weightSum;
 
@@ -292,27 +297,28 @@ class RGBFilm : public FilmBase {
         std::vector<Float> weightsSum; // number of elements
 
 
-        void EstimateRGB() {
+        std::pair<double*, Float> EstimateRGB() const {
 
-            Float fxyz[3];
+            double rgb[3];
 
             auto restimation = Estimate(rvalues);
-            rgbSum[0] = restimation.first;
+            rgb[0] = restimation.first;
 
             auto gestimation = Estimate(gvalues);
-            rgbSum[1] = gestimation.first; 
+            rgb[1] = gestimation.first; 
 
             auto bestimation = Estimate(bvalues);
-            rgbSum[2] = bestimation.first;
+            rgb[2] = bestimation.first;
 
             // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
             // computed filter weight sum based on each channel
-            weightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
+            Float computedWeightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
 
             // std::cout << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
+            return std::make_pair(rgb, computedWeightSum);
         }
 
-        std::pair<Float, Float> Estimate(std::vector<Float> cvalues) {
+        std::pair<Float, Float> Estimate(std::vector<Float> cvalues) const {
             
             // TODO : find associated weightsum index and use it
             std::vector<Float> means;
@@ -524,7 +530,7 @@ inline bool FilmHandle::UsesVisibleSurface() const {
 }
 
 PBRT_CPU_GPU
-inline RGB FilmHandle::GetPixelRGB(const Point2i &p, Float splatScale) {
+inline RGB FilmHandle::GetPixelRGB(const Point2i &p, Float splatScale) const {
     auto get = [&](auto ptr) { return ptr->GetPixelRGB(p, splatScale); };
     return Dispatch(get);
 }
