@@ -1505,9 +1505,8 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
         
                 outputFile.write((char *) &v, sizeof(v));
             }
-            
-            outputFile << std::endl;
         }
+        outputFile << std::endl;
     }
 
     outputFile.close();

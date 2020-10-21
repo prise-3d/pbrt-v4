@@ -138,6 +138,9 @@ void ImageTileIntegrator::Render() {
     // Here add number of images to generate (use of --spp for sample per pixel)
     for (unsigned i = 0; i < *Options->nimages; i++) {
 
+        uint64_t randomseed;
+        randomseed = rand();
+
         thread_local Point2i threadPixel;
         thread_local int threadSampleIndex;
         CheckCallbackScope _([&]() {
@@ -151,6 +154,12 @@ void ImageTileIntegrator::Render() {
         std::vector<ScratchBuffer> scratchBuffers;
         for (int i = 0; i < MaxThreadIndex(); ++i)
             scratchBuffers.push_back(ScratchBuffer(65536));
+
+        // std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
+        // use of random seed for each image generated
+        // check if correct way to set new seed for the whole program
+        int seed = threadPixel.x + threadPixel.y + randomseed;
+        srand(time(NULL));
 
         std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
 
