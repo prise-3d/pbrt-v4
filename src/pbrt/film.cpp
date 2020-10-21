@@ -587,7 +587,7 @@ RGBFilm::RGBFilm(const Sensor *sensor, const Point2i &resolution,
     filterIntegral = filter.Integral();
     CHECK(!pixelBounds.IsEmpty());
     CHECK(colorSpace != nullptr);
-    filmPixelMemory += pixelBounds.Area() * sizeof(PixelMON);
+    filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
     outputRGBFromCameraRGB = colorSpace->RGBFromXYZ * sensor->XYZFromCameraRGB;
 }
 
@@ -616,7 +616,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum v,
         // Evaluate filter at _pi_ and add splat contribution
         Float wt = filter.Evaluate(Point2f(p - pi - Vector2f(0.5, 0.5)));
         if (wt != 0) {
-            PixelMON &pixel = pixels[pi];
+            Pixel &pixel = pixels[pi];
             for (int i = 0; i < 3; ++i)
                 pixel.splatRGB[i].Add(wt * rgb[i]);
         }
@@ -648,7 +648,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
     Float varianceSum = 0;
     for (Point2i p : pixelBounds) {
-        const PixelMON &pixel = pixels[p];
+        const Pixel &pixel = pixels[p];
         varianceSum += Float(pixel.varianceEstimator.Variance());
     }
     metadata->estimatedVariance = varianceSum / pixelBounds.Area();
