@@ -43,7 +43,7 @@ class FilmHandle : public TaggedPointer<RGBFilm, GBufferFilm> {
 
     PBRT_CPU_GPU
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const;
-    void WriteImage(ImageMetadata metadata, Float splatScale = 1);
+    void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
     using TaggedPointer::TaggedPointer;

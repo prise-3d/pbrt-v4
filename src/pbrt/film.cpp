@@ -27,6 +27,9 @@
 #include <pbrt/util/stats.h>
 #include <pbrt/util/transform.h>
 
+#include <sys/stat.h>
+#include <fstream>
+
 namespace pbrt {
 
 void FilmHandle::AddSplat(const Point2f &p, SampledSpectrum v,
@@ -35,8 +38,9 @@ void FilmHandle::AddSplat(const Point2f &p, SampledSpectrum v,
     return Dispatch(splat);
 }
 
-void FilmHandle::WriteImage(ImageMetadata metadata, Float splatScale) {
-    auto write = [&](auto ptr) { return ptr->WriteImage(metadata, splatScale); };
+// P3D updates: use of image index to save image
+void FilmHandle::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imageIndex) {
+    auto write = [&](auto ptr) { return ptr->WriteImage(metadata, splatScale, imageIndex); };
     return DispatchCPU(write);
 }
 
@@ -623,10 +627,36 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum v,
     }
 }
 
-void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
+void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imageIndex) {
     Image image = GetImage(&metadata, splatScale);
+
+    // P3D : updates create new image with `spp` samples
+    // define delimiter to split image name
+    std::string delimiter = ".";
+    std::string output_folder = Options->folderName;
+    
+    // find prefix and postfix information from `filename`
+    std::string filename_prefix = filename.substr(0, filename.find(delimiter));
+    std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
+
+    // create custom image
+    std::string indexStr(std::to_string(imageIndex));
+
+    while(indexStr.length() < *Options->ndigits){
+        indexStr = "0" + indexStr;
+    }
+
+    // build folder
+    std::string folder_image = std::string(output_folder + "/" + filename_prefix);
+    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    
+    // TODO : improve (recursively create folders)
+    mkdir(output_folder.c_str(), 0775);
+    mkdir(folder_image.c_str(), 0775);
+
+
     LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
-    image.Write(filename, metadata);
+    image.Write(temp_filename, metadata);
 }
 
 Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
@@ -665,6 +695,9 @@ std::string RGBFilm::ToString() const {
 RGBFilm *RGBFilm::Create(const ParameterDictionary &parameters, Float exposureTime,
                          FilterHandle filter, const RGBColorSpace *colorSpace,
                          const FileLoc *loc, Allocator alloc) {
+    
+    // P3D updates : create here sub-folder where to save image
+    
     std::string filename = parameters.GetOneString("filename", "");
     if (!Options->imageFile.empty()) {
         if (!filename.empty())
@@ -869,7 +902,7 @@ void GBufferFilm::AddSplat(const Point2f &p, SampledSpectrum v,
     }
 }
 
-void GBufferFilm::WriteImage(ImageMetadata metadata, Float splatScale) {
+void GBufferFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imageIndex) {
     Image image = GetImage(&metadata, splatScale);
     LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
     image.Write(filename, metadata);

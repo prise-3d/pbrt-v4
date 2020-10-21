@@ -989,6 +989,8 @@ bool Image::Write(const std::string &name, const ImageMetadata &metadata) const 
         return image->WritePFM(name, metadata);
     else if (HasExtension(name, "png"))
         return image->WritePNG(name, metadata);
+    else if (HasExtension(name, "rawls"))
+        return image->WriteRAWLS(name, metadata);
     else {
         Error("%s: no support for writing images with this extension", name);
         return false;
@@ -1425,6 +1427,90 @@ bool Image::WritePNG(const std::string &name, const ImageMetadata &metadata) con
         error = lodepng_encode_file(name.c_str(), y8.get(), resolution.x, resolution.y,
                                     LCT_GREY, 8 /* bitdepth */);
     }
+
+    if (nOutOfGamut > 0)
+        Warning("%s: %d out of gamut pixel channels clamped to [0,1].", name,
+                nOutOfGamut);
+
+    if (error != 0) {
+        Error("Error writing PNG \"%s\": %s", name, lodepng_error_text(error));
+        return false;
+    }
+    return true;
+}
+
+// P3D updates
+bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) const {
+    unsigned int error = 0;
+    int nOutOfGamut = 0;
+
+    // Part 1
+    // using information write image header
+
+    std::ofstream outputFile(name, std::ios::out | std::ios::binary);
+    int nChannels = 3;
+
+    outputFile << "IHDR" << std::endl;
+    outputFile << ((sizeof(resolution.x) + sizeof(resolution.y) + sizeof(nChannels)))  << std::endl;
+    outputFile.write((char *) &resolution.x, sizeof(resolution.x));
+    outputFile.write((char *) &resolution.y, sizeof(resolution.y));
+    outputFile.write((char *) &nChannels, sizeof(nChannels));
+    outputFile << std::endl;
+
+    // RenderInfo* renderInfo = pbrtRenderInfo();
+    // Part 2
+    // Comments (usefull information about scene and generation data used)
+    outputFile << "COMMENTS" << std::endl;
+    // outputFile << "#Samples " << Options->pixelSamples << std::endl;
+    // outputFile << "#Filter " << renderInfo->FilterName << std::endl;
+    // outputFile << "  #params " << renderInfo->FilterParams.ToString() << std::endl;
+    // outputFile << "#Film " << renderInfo->FilmName << std::endl;
+    // outputFile << "  #params " << renderInfo->FilmParams.ToString() << std::endl;
+    // outputFile << "#Sampler " << renderInfo->SamplerName << std::endl;
+    // outputFile << " #params " << renderInfo->SamplerParams.ToString() << std::endl;
+    // outputFile << "#Accelerator " << renderInfo->AcceleratorName << std::endl;
+    // outputFile << "  #params " << renderInfo->AcceleratorParams.ToString() << std::endl;
+    // outputFile << "#Integrator " << renderInfo->IntegratorName << std::endl;
+    // outputFile << "  #params " << renderInfo->IntegratorParams.ToString() << std::endl;
+    // outputFile << "#Camera " << renderInfo->CameraName << std::endl;
+    // outputFile << "  #params " << renderInfo->CameraParams.ToString() << std::endl;
+    // outputFile << "#LookAt ";
+    // outputFile << renderInfo->LookAtParamsInfo.Eye.x << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Eye.y << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Eye.z << " ";
+    // outputFile << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Target.x << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Target.y << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Target.z << " ";
+    // outputFile << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Up.x << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Up.y << " ";
+    // outputFile << renderInfo->LookAtParamsInfo.Up.z;
+    outputFile << std::endl;
+    
+
+    // Part 3
+    // using data information write specific chunck
+    outputFile << "DATA" << std::endl;
+    outputFile << (sizeof(float) * nChannels * resolution.x * resolution.y) << std::endl;
+
+
+    for (int y = 0; y < resolution.y; ++y) {
+        for (int x = 0; x < resolution.x; ++x) {
+            for (int c = 0; c < nChannels; ++c) {
+                
+                Float v = GetChannel({x, y}, c);
+                if (v < 0 || v > 1)
+                    ++nOutOfGamut;
+        
+                outputFile.write((char *) &v, sizeof(v));
+            }
+            
+            outputFile << std::endl;
+        }
+    }
+
+    outputFile.close();
 
     if (nOutOfGamut > 0)
         Warning("%s: %d out of gamut pixel channels clamped to [0,1].", name,

@@ -178,6 +178,8 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "render-coord-sys", &renderCoordSys, onError) ||
             ParseArg(&argv, "seed", &options.seed, onError) ||
             ParseArg(&argv, "spp", &options.pixelSamples, onError) ||
+            ParseArg(&argv, "nimages", &options.nimages, onError) ||
+            ParseArg(&argv, "folder", &options.folderName, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
             ParseArg(&argv, "upgrade", &options.upgrade, onError)) {
             // success

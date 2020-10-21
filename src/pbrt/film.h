@@ -231,7 +231,7 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     void AddSplat(const Point2f &p, SampledSpectrum v, const SampledWavelengths &lambda);
 
-    void WriteImage(ImageMetadata metadata, Float splatScale = 1);
+    void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
     std::string ToString() const;
@@ -306,7 +306,7 @@ class GBufferFilm : public FilmBase {
         return rgb;
     }
 
-    void WriteImage(ImageMetadata metadata, Float splatScale = 1);
+    void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
     std::string ToString() const;
