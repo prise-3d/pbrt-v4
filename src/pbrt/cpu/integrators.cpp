@@ -138,6 +138,8 @@ void ImageTileIntegrator::Render() {
     // Here add number of images to generate (use of --spp for sample per pixel)
     for (unsigned i = 0; i < *Options->nimages; i++) {
 
+        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+
         uint64_t randomseed;
         randomseed = rand();
 
@@ -156,10 +158,12 @@ void ImageTileIntegrator::Render() {
             scratchBuffers.push_back(ScratchBuffer(65536));
 
         // std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
+
         // use of random seed for each image generated
         // check if correct way to set new seed for the whole program
+        // `seed` only available for [`RamdomSampler`, `StratifiedSampler`]
         int seed = threadPixel.x + threadPixel.y + randomseed;
-        srand(time(NULL));
+        samplerPrototype.setSeed(seed);
 
         std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
 
@@ -278,7 +282,6 @@ void ImageTileIntegrator::Render() {
             fclose(mseOutFile);
         progress.Done();
         LOG_VERBOSE("Rendering of image is finished");
-        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) + " is finished" << std::endl;
     }
 }
 

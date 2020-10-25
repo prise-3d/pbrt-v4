@@ -85,6 +85,8 @@ class HaltonSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    void setSeed(int seed) {}; // P3D updates
+
   private:
     // HaltonSampler Private Members
     pstd::vector<DigitPermutation> *digitPermutations;
@@ -160,6 +162,8 @@ class PaddedSobolSampler {
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
+
+    void setSeed(int seed) {}; // P3D updates
 
   private:
     // PaddedSobolSampler Private Methods
@@ -257,6 +261,8 @@ class PMJ02BNSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    void setSeed(int seed) {}; // P3D updates
+
   private:
     // PMJ02BNSampler Private Methods
     PBRT_CPU_GPU
@@ -304,6 +310,11 @@ class RandomSampler {
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
+
+    // P3D updates
+    void setSeed(int seed) {
+        this->seed = seed;
+    };
 
   private:
     // RandomSampler Private Members
@@ -369,6 +380,8 @@ class SobolSampler {
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
+
+    void setSeed(int seed) {}; // P3D updates
 
   private:
     // SobolSampler Private Methods
@@ -456,6 +469,11 @@ class StratifiedSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    // P3D updates
+    void setSeed(int seed) {
+        this->seed = seed;
+    };
+
   private:
     // StratifiedSampler Private Members
     int xPixelSamples, yPixelSamples;
@@ -521,6 +539,9 @@ class MLTSampler {
             rng, sigma, largeStepProbability, streamCount, X, currentIteration, largeStep,
             lastLargeStepIteration, streamIndex, sampleIndex);
     }
+
+    // P3D updates
+    void setSeed(int seed) {};
 
   protected:
     // MLTSampler Private Declarations
