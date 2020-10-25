@@ -12,6 +12,7 @@
 #include <pbrt/util/bluenoise.h>
 #include <pbrt/util/spectrum.h>
 #include <pbrt/util/vecmath.h>
+#include <pbrt/util/soa.h>
 
 namespace pbrt {
 
@@ -53,7 +54,7 @@ void GPUPathIntegrator::GenerateCameraRays(int y0, int sampleIndex) {
         pstd::optional<CameraRay> cameraRay = camera.GenerateRay(cameraSample, lambda);
 
         // P3D updates (add camera sample information)
-        pixelSampleState.pFilm = cameraSample.pFilm;
+        pixelSampleState.pFilm = pbrt::<SAO>(cameraSample.pFilm);
 
         // Initialize the rest of the pixel sample's state.
         pixelSampleState.L[pixelIndex] = SampledSpectrum(0.f);
