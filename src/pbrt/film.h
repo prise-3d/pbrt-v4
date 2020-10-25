@@ -190,6 +190,36 @@ class RGBFilm : public FilmBase {
         pixel.weightSum += weight;
     }
 
+    // P3D updates
+    PBRT_CPU_GPU
+    void AddSample(const Point2i &pFilm, SampledSpectrum L,
+                   const SampledWavelengths &lambda, const VisibleSurface *visibleSurface,
+                   Float weight, Point2f sampleCoord) {
+        // First convert to sensor exposure, H, then to camera RGB
+        SampledSpectrum H = L * sensor->ImagingRatio();
+        RGB rgb = sensor->ToCameraRGB(H, lambda);
+        // Optionally clamp sensor RGB value
+        Float m = std::max({rgb.r, rgb.g, rgb.b});
+        if (m > maxComponentValue) {
+            H *= maxComponentValue / m;
+            rgb *= maxComponentValue / m;
+        }
+
+        DCHECK(InsideExclusive(pFilm, pixelBounds));
+        // Update pixel variance estimate
+        // pixels[pFilm].varianceEstimator.Add(H.Average());
+        pixels[pFilm].varianceEstimator.Add(L.Average());
+
+        // Update pixel values with filtered sample contribution
+        Pixel &pixel = pixels[pFilm];
+        for (int c = 0; c < 3; ++c)
+            pixel.rgbSum[c] += weight * rgb[c];
+        pixel.weightSum += weight;
+
+        // P3D add sampleCoord into 2DArray
+        samplesCoords[pFilm] = sampleCoord;
+    }
+
     PBRT_CPU_GPU
     bool UsesVisibleSurface() const { return false; }
 
@@ -248,6 +278,7 @@ class RGBFilm : public FilmBase {
 
     // RGBFilm Private Members
     Array2D<Pixel> pixels;
+    Array2D<Point2f> samplesCoords;
     Float scale;
     const RGBColorSpace *colorSpace;
     Float maxComponentValue;
@@ -277,6 +308,11 @@ class GBufferFilm : public FilmBase {
     void AddSample(const Point2i &pFilm, SampledSpectrum L,
                    const SampledWavelengths &lambda, const VisibleSurface *visibleSurface,
                    Float weight);
+
+    PBRT_CPU_GPU
+    void AddSample(const Point2i &pFilm, SampledSpectrum L,
+                   const SampledWavelengths &lambda, const VisibleSurface *visibleSurface,
+                   Float weight, Point2f sampleCoord);
 
     PBRT_CPU_GPU
     void AddSplat(const Point2f &p, SampledSpectrum v, const SampledWavelengths &lambda);
@@ -327,6 +363,7 @@ class GBufferFilm : public FilmBase {
 
     // GBufferFilm Private Members
     Array2D<Pixel> pixels;
+    Array2D<Point2f> samplesCoords;
     Float scale;
     const RGBColorSpace *colorSpace;
     Float maxComponentValue;
@@ -389,6 +426,17 @@ inline void FilmHandle::AddSample(const Point2i &pFilm, SampledSpectrum L,
                                   const VisibleSurface *visibleSurface, Float weight) {
     auto add = [&](auto ptr) {
         return ptr->AddSample(pFilm, L, lambda, visibleSurface, weight);
+    };
+    return Dispatch(add);
+}
+
+// P3D Updates
+PBRT_CPU_GPU
+inline void FilmHandle::AddSample(const Point2i &pFilm, SampledSpectrum L,
+                                  const SampledWavelengths &lambda,
+                                  const VisibleSurface *visibleSurface, Float weight, Point2f sampleCoord) {
+    auto add = [&](auto ptr) {
+        return ptr->AddSample(pFilm, L, lambda, visibleSurface, weight, sampleCoord);
     };
     return Dispatch(add);
 }

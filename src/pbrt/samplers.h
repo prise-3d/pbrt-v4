@@ -650,6 +650,7 @@ inline PBRT_CPU_GPU CameraSample GetCameraSample(Sampler sampler, const Point2i 
         fs.weight = 1;
     }
 
+    // P3D check how to retrieve pFilm value
     CameraSample cs;
     cs.pFilm = pPixel + fs.p + Vector2f(0.5, 0.5);
     cs.time = sampler.Get1D();

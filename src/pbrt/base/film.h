@@ -31,6 +31,12 @@ class FilmHandle : public TaggedPointer<RGBFilm, GBufferFilm> {
                                        const VisibleSurface *visibleSurface,
                                        Float weight);
 
+    PBRT_CPU_GPU inline void AddSample(const Point2i &pFilm, SampledSpectrum L,
+                                       const SampledWavelengths &lambda,
+                                       const VisibleSurface *visibleSurface,
+                                       Float weight,
+                                       Point2f sampleCoord);
+
     PBRT_CPU_GPU
     bool UsesVisibleSurface() const;
 

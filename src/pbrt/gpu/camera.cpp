@@ -52,6 +52,9 @@ void GPUPathIntegrator::GenerateCameraRays(int y0, int sampleIndex) {
         CameraSample cameraSample = GetCameraSample(pixelSampler, pPixel, filter);
         pstd::optional<CameraRay> cameraRay = camera.GenerateRay(cameraSample, lambda);
 
+        // P3D updates (add camera sample information)
+        pixelSampleState.pFilm = cameraSample.pfilm;
+
         // Initialize the rest of the pixel sample's state.
         pixelSampleState.L[pixelIndex] = SampledSpectrum(0.f);
         pixelSampleState.lambda[pixelIndex] = lambda;

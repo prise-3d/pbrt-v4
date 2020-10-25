@@ -98,6 +98,7 @@ struct SOA<RaySamples> {
 
 struct PixelSampleState {
     Float filterWeight;
+    Point2f pFilm;
     Point2i pPixel;
     SampledWavelengths lambda;
     SampledSpectrum L;

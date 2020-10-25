@@ -232,6 +232,8 @@ Image::Image(PixelFormat format, Point2i resolution,
         p32.resize(NChannels() * resolution[0] * resolution[1]);
     else
         LOG_FATAL("Unhandled format in Image::Image()");
+
+    samplesCoords = pstd::vector<float>(resolution[0] * resolution[1] * 2);
 }
 
 ImageChannelDesc Image::GetChannelDesc(
@@ -468,6 +470,7 @@ Image::Image(pstd::vector<uint8_t> p8c, Point2i resolution,
       encoding(encoding),
       p8(std::move(p8c)) {
     CHECK_EQ(p8.size(), NChannels() * resolution[0] * resolution[1]);
+    samplesCoords = pstd::vector<float>(resolution[0] * resolution[1] * 2);
 }
 
 Image::Image(pstd::vector<Half> p16c, Point2i resolution,
@@ -478,6 +481,7 @@ Image::Image(pstd::vector<Half> p16c, Point2i resolution,
       p16(std::move(p16c)) {
     CHECK_EQ(p16.size(), NChannels() * resolution[0] * resolution[1]);
     CHECK(Is16Bit(format));
+    samplesCoords = pstd::vector<float>(resolution[0] * resolution[1] * 2);
 }
 
 Image::Image(pstd::vector<float> p32c, Point2i resolution,
@@ -488,6 +492,7 @@ Image::Image(pstd::vector<float> p32c, Point2i resolution,
       p32(std::move(p32c)) {
     CHECK_EQ(p32.size(), NChannels() * resolution[0] * resolution[1]);
     CHECK(Is32Bit(format));
+    samplesCoords = pstd::vector<float>(resolution[0] * resolution[1] * 2);
 }
 
 Image Image::ConvertToFormat(PixelFormat newFormat, ColorEncodingHandle encoding) const {
@@ -1505,6 +1510,23 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
         
                 outputFile.write((char *) &v, sizeof(v));
             }
+        }
+        outputFile << std::endl;
+    }
+
+    // Part 4
+    // using samples coord information write specific chunck
+    outputFile << "COORDS" << std::endl;
+    outputFile << (sizeof(float) * 2 * resolution.x * resolution.y) << std::endl;
+
+    for (int y = 0; y < resolution.y; ++y) {
+        for (int x = 0; x < resolution.x; ++x) {
+
+            Float xCoord = samplesCoords[2 * (y * resolution.x + x)];
+            Float yCoord = samplesCoords[2 * (y * resolution.x + x) + 1];
+        
+            outputFile.write((char *) &xCoord, sizeof(xCoord));
+            outputFile.write((char *) &yCoord, sizeof(yCoord));
         }
         outputFile << std::endl;
     }

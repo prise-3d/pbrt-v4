@@ -26,11 +26,12 @@ void GPUPathIntegrator::UpdateFilm() {
         PBRT_DBG("Adding Lw %f %f %f %f at pixel (%d, %d)", Lw[0], Lw[1], Lw[2], Lw[3],
                  pPixel.x, pPixel.y);
 
+        // P3D find pixel camera coordinates
         if (initializeVisibleSurface) {
             VisibleSurface visibleSurface = pixelSampleState.visibleSurface[pixelIndex];
-            film.AddSample(pPixel, Lw, lambda, &visibleSurface, filterWeight);
+            film.AddSample(pPixel, Lw, lambda, &visibleSurface, filterWeight, pixelSampleState.pFilm);
         } else
-            film.AddSample(pPixel, Lw, lambda, nullptr, filterWeight);
+            film.AddSample(pPixel, Lw, lambda, nullptr, filterWeight, pixelSampleState.pFilm);
     });
 }
 

@@ -6,6 +6,7 @@
 #define PBRT_UTIL_IMAGE_H
 
 #include <pbrt/pbrt.h>
+#include <iostream>
 
 #include <pbrt/util/check.h>
 #include <pbrt/util/color.h>
@@ -211,6 +212,7 @@ struct ImageChannelValues : public InlinedVector<Float, 4> {
     std::string ToString() const;
 };
 
+// P3D TODO : initialize samplesCoords
 // Image Definition
 class Image {
   public:
@@ -219,7 +221,9 @@ class Image {
           p16(alloc),
           p32(alloc),
           format(PixelFormat::U256),
-          resolution(0, 0) {}
+          resolution(0, 0) {
+            samplesCoords = pstd::vector<float>(resolution[0] * resolution[1] * 2);
+          }
     Image(pstd::vector<uint8_t> p8, Point2i resolution,
           pstd::span<const std::string> channels, ColorEncodingHandle encoding);
     Image(pstd::vector<Half> p16, Point2i resolution,
@@ -341,6 +345,15 @@ class Image {
     void SetChannels(Point2i p, const ImageChannelDesc &desc,
                      pstd::span<const Float> values);
 
+    // P3D updates
+    void SetSampleCoord(Point2i p, pstd::span<const Float> values) {
+
+        int offset = 2 * (p.y * resolution.x + p.x);
+
+        for (size_t i = 0; i < values.size(); ++i) 
+            samplesCoords[offset + i] = values[i];      
+    }
+
     Image FloatResize(Point2i newResolution, WrapMode2D wrap) const;
     void FlipY();
     static pstd::vector<Image> GenerateMIPMap(Image image, WrapMode2D wrapMode,
@@ -419,6 +432,9 @@ class Image {
     pstd::vector<uint8_t> p8;
     pstd::vector<Half> p16;
     pstd::vector<float> p32;
+
+    // P3D updates
+    pstd::vector<float> samplesCoords;
 };
 
 // ImageAndMetadata Definition

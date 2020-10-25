@@ -584,6 +584,7 @@ RGBFilm::RGBFilm(const Sensor *sensor, const Point2i &resolution,
                  Allocator allocator)
     : FilmBase(resolution, pixelBounds, filter, diagonal, sensor, filename),
       pixels(pixelBounds, allocator),
+      samplesCoords(pixelBounds),
       scale(scale),
       colorSpace(colorSpace),
       maxComponentValue(maxComponentValue),
@@ -670,6 +671,14 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
         Point2i pOffset(p.x - pixelBounds.pMin.x, p.y - pixelBounds.pMin.y);
         image.SetChannels(pOffset, {rgb[0], rgb[1], rgb[2]});
+    });
+
+    // P3D updates (get samples coord)
+    ParallelFor2D(pixelBounds, [&](Point2i p) {
+        Point2f coord = samplesCoords[p];
+
+        Point2i pOffset(p.x - pixelBounds.pMin.x, p.y - pixelBounds.pMin.y);
+        image.SetSampleCoord(pOffset, {coord[0], coord[1]});
     });
 
     metadata->pixelBounds = pixelBounds;
@@ -854,6 +863,49 @@ void GBufferFilm::AddSample(const Point2i &pFilm, SampledSpectrum L,
     for (int c = 0; c < 3; ++c)
         p.rgbSum[c] += rgb[c] * weight;
     p.weightSum += weight;
+}
+
+// P3D updates
+void GBufferFilm::AddSample(const Point2i &pFilm, SampledSpectrum L,
+                            const SampledWavelengths &lambda,
+                            const VisibleSurface *visibleSurface, Float weight,
+                            Point2f sampleCoord) {
+    // First convert to sensor exposure, H, then to camera RGB
+    SampledSpectrum H = L * sensor->ImagingRatio();
+    RGB rgb = sensor->ToCameraRGB(H, lambda);
+    Float m = std::max({rgb.r, rgb.g, rgb.b});
+    if (m > maxComponentValue) {
+        H *= maxComponentValue / m;
+        rgb *= maxComponentValue / m;
+    }
+
+    Pixel &p = pixels[pFilm];
+    if (visibleSurface && *visibleSurface) {
+        // Update variance estimates.
+        // TODO: store channels independently?
+        p.rgbVarianceEstimator.Add(H.y(lambda));
+
+        p.pSum += weight * visibleSurface->p;
+
+        p.nSum += weight * visibleSurface->n;
+        p.nsSum += weight * visibleSurface->ns;
+
+        p.dzdxSum += weight * visibleSurface->dzdx;
+        p.dzdySum += weight * visibleSurface->dzdy;
+
+        SampledSpectrum albedo =
+            visibleSurface->albedo * colorSpace->illuminant.Sample(lambda);
+        RGB albedoRGB = albedo.ToRGB(lambda, *colorSpace);
+        for (int c = 0; c < 3; ++c)
+            p.albedoSum[c] += weight * albedoRGB[c];
+    }
+
+    for (int c = 0; c < 3; ++c)
+        p.rgbSum[c] += rgb[c] * weight;
+    p.weightSum += weight;
+
+    // P3D add sampleCoord into 2DArray
+    samplesCoords[pFilm] = sampleCoord;
 }
 
 GBufferFilm::GBufferFilm(const Sensor *sensor, const Point2i &resolution,
