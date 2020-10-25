@@ -28,6 +28,7 @@ soa VisibleSurface;
 
 soa PixelSampleState {
     Float filterWeight;
+    Point2f pFilm;
     Point2i pPixel;
     SampledWavelengths lambda;
     SampledSpectrum L;
