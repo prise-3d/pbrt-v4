@@ -22,6 +22,7 @@ void GPUPathIntegrator::UpdateFilm() {
                              pixelSampleState.cameraRayWeight[pixelIndex];
         SampledWavelengths lambda = pixelSampleState.lambda[pixelIndex];
         Float filterWeight = pixelSampleState.filterWeight[pixelIndex];
+        Point2f pFilm = pixelSampleState.pFilm[pixelIndex];
 
         PBRT_DBG("Adding Lw %f %f %f %f at pixel (%d, %d)", Lw[0], Lw[1], Lw[2], Lw[3],
                  pPixel.x, pPixel.y);
@@ -29,9 +30,9 @@ void GPUPathIntegrator::UpdateFilm() {
         // P3D find pixel camera coordinates
         if (initializeVisibleSurface) {
             VisibleSurface visibleSurface = pixelSampleState.visibleSurface[pixelIndex];
-            film.AddSample(pPixel, Lw, lambda, &visibleSurface, filterWeight, pixelSampleState.pFilm);
+            film.AddSample(pPixel, Lw, lambda, &visibleSurface, filterWeight, pFilm);
         } else
-            film.AddSample(pPixel, Lw, lambda, nullptr, filterWeight, pixelSampleState.pFilm);
+            film.AddSample(pPixel, Lw, lambda, nullptr, filterWeight, pFilm);
     });
 }
 
