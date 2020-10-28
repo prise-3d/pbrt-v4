@@ -342,7 +342,7 @@ class RGBFilm : public FilmBase {
     struct PixelMON {
         PixelMON() { 
 
-            k = 9;
+            k = *Options->monk;
             index = 0;
 
             rvalues = std::vector<Float>();

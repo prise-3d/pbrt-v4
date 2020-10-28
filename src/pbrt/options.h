@@ -36,6 +36,7 @@ struct PBRTOptions : BasicOptions {
     LogLevel logLevel = LogLevel::Error;
     pstd::optional<int> pixelSamples;
     pstd::optional<int> gpuDevice;
+    pstd::optional<int> monk; // P3D update k mon parameter
     std::string imageFile;
     std::string mseReferenceImage, mseReferenceOutput;
     std::string debugStart;
