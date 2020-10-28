@@ -174,27 +174,27 @@ class RGBFilm : public FilmBase {
         //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
         //Float weightSum = pixel.weightSum;
-        // auto restimation = Estimate(pixel.rvalues, pixel.weightsSum);
-        // auto gestimation = Estimate(pixel.gvalues, pixel.weightsSum);
-        // auto bestimation = Estimate(pixel.bvalues, pixel.weightsSum);
+        auto restimation = Estimate(pixel.rvalues, pixel.weightsSum);
+        auto gestimation = Estimate(pixel.gvalues, pixel.weightsSum);
+        auto bestimation = Estimate(pixel.bvalues, pixel.weightsSum);
 
         // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
         // computed filter weight sum based on each channel
-        // Float weightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
+        Float weightSum = (restimation.y + gestimation.y + bestimation.y) / 3.;
 
         // std::cout << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
         
-        // RGB rgb(restimation.first, gestimation.first, bestimation.first);
-        RGB rgb(0., 0., 0.);
+        RGB rgb(restimation.x, gestimation.x, bestimation.x);
+        // RGB rgb(0., 0., 0.);
         // Float weightSum = estimated.second;
         // P3D Updates
 
-        //if (weightSum != 0)
-        //   rgb /= weightSum;
+        if (weightSum != 0)
+          rgb /= weightSum;
 
         // Add splat value at pixel
-        // for (int c = 0; c < 3; ++c)
-        //     rgb[c] += splatScale * pixel.splatRGB[c] / filterIntegral;
+        for (int c = 0; c < 3; ++c)
+            rgb[c] += splatScale * pixel.splatRGB[c] / filterIntegral;
 
         // Scale pixel value by _scale_
         rgb *= scale;
@@ -233,7 +233,7 @@ class RGBFilm : public FilmBase {
         // }
 
         // P3D Updates MON pixel
-        if (pixel.rvalues.size() < pixel.k){
+        /*if (pixel.rvalues.size() < pixel.k){
 
             pixel.rvalues.push_back(rgb[0]);
             pixel.gvalues.push_back(rgb[1]);
@@ -242,16 +242,13 @@ class RGBFilm : public FilmBase {
             pixel.weightsSum.push_back(weight);
             
             // counters.push_back(1);
-        }
-        else{
-            pixel.rvalues[pixel.index] += rgb[0];
-            pixel.gvalues[pixel.index] += rgb[1];
-            pixel.bvalues[pixel.index] += rgb[2];
+        }*/
+        
+        pixel.rvalues[pixel.index] += rgb[0];
+        pixel.gvalues[pixel.index] += rgb[1];
+        pixel.bvalues[pixel.index] += rgb[2];
 
-            pixel.weightsSum[pixel.index] += weight;
-
-            // counters[index] += 1;
-        }
+        pixel.weightsSum[pixel.index] += weight;
 
         pixel.index += 1;
 
@@ -264,50 +261,49 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     bool UsesVisibleSurface() const { return false; }
 
-    /*PBRT_CPU_GPU
-    std::pair<Float, Float> Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
+    PBRT_CPU_GPU
+    Point2f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
             
         // TODO : find associated weightsum index and use it
-        pstd::vector<Float> means;
-
         unsigned nElements = cvalues.size();
+        pstd::vector<Float> means(nElements);
 
         for (unsigned i = 0; i < nElements; i++){
-            // remove dividing by counters as we use filterweightsum later
-            means.push_back(cvalues[i]);
+            // remove dividing by counters as we use filter weightsum later
+            means[i]  = cvalues[i];
         }
 
         // Vector to store element 
         // with respective present index 
-        std::vector<std::pair<Float, unsigned> > vp; 
+        // pstd::vector<pstd::pair<Float, unsigned> > vp; 
     
         // Inserting element in pair vector 
         // to keep track of previous indexes 
-        for (unsigned i = 0; i < nElements; i++) { 
-            vp.push_back(std::make_pair(means[i], i)); 
-        }
+        // for (unsigned i = 0; i < nElements; i++) { 
+        //     vp.push_back(pstd::make_pair(means[i], i)); 
+        // }
 
-        std::sort(vp.begin(), vp.end());
+        // pstd::sort(vp.begin(), vp.end());
 
-        Float weight, mean;
-        // compute median from means
-        if (nElements % 2 == 1){
-            unsigned unsortedIndex = vp[int(nElements/2)].second;
+        Float weight, mean = 0.;
+        // // compute median from means
+        // if (nElements % 2 == 1){
+        //     unsigned unsortedIndex = vp[int(nElements/2)].second;
 
-            weight = weightsSum[unsortedIndex];
-            mean = means[unsortedIndex];
-        }
-        else{
-            int k_mean = int(nElements/2);
-            unsigned firstIndex = vp[k_mean - 1].second;
-            unsigned secondIndex = vp[k_mean].second;
+        //     weight = weightsSum[unsortedIndex];
+        //     mean = means[unsortedIndex];
+        // }
+        // else{
+        //     int k_mean = int(nElements/2);
+        //     unsigned firstIndex = vp[k_mean - 1].second;
+        //     unsigned secondIndex = vp[k_mean].second;
 
-            weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-            mean = (means[firstIndex] + means[secondIndex]) / 2;
-        }
+        //     weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+        //     mean = (means[firstIndex] + means[secondIndex]) / 2;
+        // }
 
-        return std::make_pair(mean, weight);
-    }*/
+        return Point2f(mean, weight);
+    }
 
     RGBFilm() = default;
     RGBFilm(const Sensor *sensor, const Point2i &resolution, const Bounds2i &pixelBounds,
@@ -345,11 +341,12 @@ class RGBFilm : public FilmBase {
 
             k = *Options->monk;
             index = 0;
+            filled = false;
 
-            rvalues = pstd::vector<Float>();
-            gvalues = pstd::vector<Float>();
-            bvalues = pstd::vector<Float>();
-            weightsSum = pstd::vector<Float>();
+            rvalues = pstd::vector<Float>(*Options->pixelSamples);
+            gvalues = pstd::vector<Float>(*Options->pixelSamples);
+            bvalues = pstd::vector<Float>(*Options->pixelSamples);
+            weightsSum = pstd::vector<Float>(*Options->pixelSamples);
             // counters = std::vector<unsigned>();
         }
 
@@ -360,6 +357,7 @@ class RGBFilm : public FilmBase {
 
         unsigned k; // number of means clusters
         unsigned index; // keep track of index used
+        bool filled;
         
         pstd::vector<Float> rvalues; // store sum of r lightness
         pstd::vector<Float> gvalues; // store sum of g lightness
