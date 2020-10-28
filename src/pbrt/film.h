@@ -174,26 +174,27 @@ class RGBFilm : public FilmBase {
         //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
         //Float weightSum = pixel.weightSum;
-        auto restimation = Estimate(pixel.rvalues, pixel.weightsSum);
-        auto gestimation = Estimate(pixel.gvalues, pixel.weightsSum);
-        auto bestimation = Estimate(pixel.bvalues, pixel.weightsSum);
+        // auto restimation = Estimate(pixel.rvalues, pixel.weightsSum);
+        // auto gestimation = Estimate(pixel.gvalues, pixel.weightsSum);
+        // auto bestimation = Estimate(pixel.bvalues, pixel.weightsSum);
 
         // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
         // computed filter weight sum based on each channel
-        Float weightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
+        // Float weightSum = (restimation.second + gestimation.second + bestimation.second) / 3.;
 
         // std::cout << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
         
-        RGB rgb(restimation.first, gestimation.first, bestimation.first);
+        // RGB rgb(restimation.first, gestimation.first, bestimation.first);
+        RGB rgb(0., 0., 0.);
         // Float weightSum = estimated.second;
         // P3D Updates
 
-        if (weightSum != 0)
-            rgb /= weightSum;
+        //if (weightSum != 0)
+        //   rgb /= weightSum;
 
         // Add splat value at pixel
-        for (int c = 0; c < 3; ++c)
-            rgb[c] += splatScale * pixel.splatRGB[c] / filterIntegral;
+        // for (int c = 0; c < 3; ++c)
+        //     rgb[c] += splatScale * pixel.splatRGB[c] / filterIntegral;
 
         // Scale pixel value by _scale_
         rgb *= scale;
@@ -263,7 +264,7 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     bool UsesVisibleSurface() const { return false; }
 
-    PBRT_CPU_GPU
+    /*PBRT_CPU_GPU
     std::pair<Float, Float> Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
             
         // TODO : find associated weightsum index and use it
@@ -306,7 +307,7 @@ class RGBFilm : public FilmBase {
         }
 
         return std::make_pair(mean, weight);
-    }
+    }*/
 
     RGBFilm() = default;
     RGBFilm(const Sensor *sensor, const Point2i &resolution, const Bounds2i &pixelBounds,
@@ -399,13 +400,6 @@ class GBufferFilm : public FilmBase {
     void AddSample(const Point2i &pFilm, SampledSpectrum L,
                    const SampledWavelengths &lambda, const VisibleSurface *visibleSurface,
                    Float weight);
-
-
-    // P3D updates: by default
-    PBRT_CPU_GPU
-    std::pair<Float, Float> Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
-        return std::make_pair(0., 0.);
-    };
 
     PBRT_CPU_GPU
     void AddSplat(const Point2f &p, SampledSpectrum v, const SampledWavelengths &lambda);
@@ -509,13 +503,6 @@ inline bool FilmHandle::UsesVisibleSurface() const {
 PBRT_CPU_GPU
 inline RGB FilmHandle::GetPixelRGB(const Point2i &p, Float splatScale) const {
     auto get = [&](auto ptr) { return ptr->GetPixelRGB(p, splatScale); };
-    return Dispatch(get);
-}
-
-// P3D updates: enable generic estimate function
-PBRT_CPU_GPU
-inline std::pair<Float, Float> FilmHandle::Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
-    auto get = [&](auto ptr) { return ptr->Estimate(cvalues, weightsSum); };
     return Dispatch(get);
 }
 
