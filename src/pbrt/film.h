@@ -205,7 +205,7 @@ class RGBFilm : public FilmBase {
     }
 
 
-        PBRT_CPU_GPU
+    PBRT_CPU_GPU
     void AddSample(const Point2i &pFilm, SampledSpectrum L,
                    const SampledWavelengths &lambda, const VisibleSurface *visibleSurface,
                    Float weight) {
@@ -243,13 +243,13 @@ class RGBFilm : public FilmBase {
             // counters.push_back(1);
         }
         else{
-            pixel.rvalues.at(pixel.index) += rgb[0];
-            pixel.gvalues.at(pixel.index) += rgb[1];
-            pixel.bvalues.at(pixel.index) += rgb[2];
+            pixel.rvalues[pixel.index] += rgb[0];
+            pixel.gvalues[pixel.index] += rgb[1];
+            pixel.bvalues[pixel.index] += rgb[2];
 
-            pixel.weightsSum.at(pixel.index) += weight;
+            pixel.weightsSum[pixel.index] += weight;
 
-            // counters.at(index) += 1;
+            // counters[index] += 1;
         }
 
         pixel.index += 1;
@@ -264,10 +264,10 @@ class RGBFilm : public FilmBase {
     bool UsesVisibleSurface() const { return false; }
 
     PBRT_CPU_GPU
-    std::pair<Float, Float> Estimate(std::vector<Float> cvalues, std::vector<Float> weightsSum) const {
+    std::pair<Float, Float> Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
             
         // TODO : find associated weightsum index and use it
-        std::vector<Float> means;
+        pstd::vector<Float> means;
 
         unsigned nElements = cvalues.size();
 
@@ -345,10 +345,10 @@ class RGBFilm : public FilmBase {
             k = *Options->monk;
             index = 0;
 
-            rvalues = std::vector<Float>();
-            gvalues = std::vector<Float>();
-            bvalues = std::vector<Float>();
-            weightsSum = std::vector<Float>();
+            rvalues = pstd::vector<Float>();
+            gvalues = pstd::vector<Float>();
+            bvalues = pstd::vector<Float>();
+            weightsSum = pstd::vector<Float>();
             // counters = std::vector<unsigned>();
         }
 
@@ -360,12 +360,12 @@ class RGBFilm : public FilmBase {
         unsigned k; // number of means clusters
         unsigned index; // keep track of index used
         
-        std::vector<Float> rvalues; // store sum of r lightness
-        std::vector<Float> gvalues; // store sum of g lightness
-        std::vector<Float> bvalues; // store sum of b lightness
+        pstd::vector<Float> rvalues; // store sum of r lightness
+        pstd::vector<Float> gvalues; // store sum of g lightness
+        pstd::vector<Float> bvalues; // store sum of b lightness
 
-        // std::vector<unsigned> counters; // number of elements
-        std::vector<Float> weightsSum; // number of elements
+        // pstd::vector<unsigned> counters; // number of elements
+        pstd::vector<Float> weightsSum; // number of elements
     };
 
     // RGBFilm Private Members
