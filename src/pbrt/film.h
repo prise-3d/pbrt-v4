@@ -400,6 +400,13 @@ class GBufferFilm : public FilmBase {
                    const SampledWavelengths &lambda, const VisibleSurface *visibleSurface,
                    Float weight);
 
+
+    // P3D updates: by default
+    PBRT_CPU_GPU
+    std::pair<Float, Float> Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
+        return std::make_pair(0., 0.);
+    };
+
     PBRT_CPU_GPU
     void AddSplat(const Point2f &p, SampledSpectrum v, const SampledWavelengths &lambda);
 
@@ -502,6 +509,13 @@ inline bool FilmHandle::UsesVisibleSurface() const {
 PBRT_CPU_GPU
 inline RGB FilmHandle::GetPixelRGB(const Point2i &p, Float splatScale) const {
     auto get = [&](auto ptr) { return ptr->GetPixelRGB(p, splatScale); };
+    return Dispatch(get);
+}
+
+// P3D updates: enable generic estimate function
+PBRT_CPU_GPU
+inline std::pair<Float, Float> FilmHandle::Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
+    auto get = [&](auto ptr) { return ptr->Estimate(cvalues, weightsSum); };
     return Dispatch(get);
 }
 

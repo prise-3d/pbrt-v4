@@ -43,6 +43,7 @@ class FilmHandle : public TaggedPointer<RGBFilm, GBufferFilm> {
 
     PBRT_CPU_GPU
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const;
+    std::pair<Float, Float> Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const; // P3D updates
     void WriteImage(ImageMetadata metadata, Float splatScale = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
