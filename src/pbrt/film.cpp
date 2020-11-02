@@ -655,7 +655,6 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imag
     mkdir(output_folder.c_str(), 0775);
     mkdir(folder_image.c_str(), 0775);
 
-
     LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
     image.Write(temp_filename, metadata);
 }

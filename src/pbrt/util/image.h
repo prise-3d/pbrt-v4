@@ -222,8 +222,9 @@ class Image {
           p32(alloc),
           format(PixelFormat::U256),
           resolution(0, 0) {
-            samplesCoords = pstd::vector<float>(resolution[0] * resolution[1] * 2);
+              
           }
+
     Image(pstd::vector<uint8_t> p8, Point2i resolution,
           pstd::span<const std::string> channels, ColorEncodingHandle encoding);
     Image(pstd::vector<Half> p16, Point2i resolution,
@@ -351,7 +352,17 @@ class Image {
         int offset = 2 * (p.y * resolution.x + p.x);
 
         for (size_t i = 0; i < values.size(); ++i) 
-            samplesCoords[offset + i] = values[i];      
+            samplesCoords[offset + i] = values[i];   
+    }   
+
+    // P3D updates
+    void SetSamplesCoords(pstd::vector<float> coords) {
+        samplesCoords = coords;
+    }
+
+    // P3D updates
+    pstd::vector<float> GetSamplesCoords() const {
+        return samplesCoords;
     }
 
     Image FloatResize(Point2i newResolution, WrapMode2D wrap) const;

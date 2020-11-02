@@ -959,7 +959,7 @@ bool Image::Write(const std::string &name, const ImageMetadata &metadata) const 
               NChannels());
         return false;
     }
-
+    
     const Image *image = this;
     Image rgbImage;
     if (NChannels() == 4) {
@@ -1364,6 +1364,10 @@ Image Image::SelectChannels(const ImageChannelDesc &desc, Allocator alloc) const
     for (int y = 0; y < resolution.y; ++y)
         for (int x = 0; x < resolution.x; ++x)
             image.SetChannels({x, y}, GetChannels({x, y}, desc));
+
+    // P3D Updates: Set here samples coords 
+    image.SetSamplesCoords(GetSamplesCoords());
+
     return image;
 }
 
@@ -1518,7 +1522,7 @@ bool Image::WriteRAWLS(const std::string &name, const ImageMetadata &metadata) c
     // using samples coord information write specific chunck
     outputFile << "COORDS" << std::endl;
     outputFile << (sizeof(float) * 2 * resolution.x * resolution.y) << std::endl;
-
+        
     for (int y = 0; y < resolution.y; ++y) {
         for (int x = 0; x < resolution.x; ++x) {
 
