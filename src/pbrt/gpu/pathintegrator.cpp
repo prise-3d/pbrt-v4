@@ -613,7 +613,7 @@ void GPURender(ParsedScene &scene) {
 
     // P3D updates
     // Here add number of images to generate (use of --spp for sample per pixel)
-    for (unsigned i = 0; i < *Options->nimages; i++) {
+    for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
         std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
