@@ -36,6 +36,7 @@ struct PBRTOptions : BasicOptions {
     LogLevel logLevel = LogLevel::Error;
     pstd::optional<int> pixelSamples;
     pstd::optional<int> nimages = 1; // P3D updates: use of number of images to generate
+    pstd::optional<int> startIndex = 0; // P3D updates: use of number of images to generate
     pstd::optional<int> ndigits = 6; // P3D updates: number of digits for file format
     pstd::optional<int> gpuDevice;
     std::string imageFile;
