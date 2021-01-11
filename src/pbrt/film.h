@@ -268,6 +268,7 @@ class RGBFilm : public FilmBase {
         unsigned nElements = cvalues.size();
         pstd::vector<Float> means(nElements);
 
+
         for (unsigned i = 0; i < nElements; i++){
             // remove dividing by counters as we use filter weightsum later
             means[i]  = cvalues[i];
@@ -275,32 +276,32 @@ class RGBFilm : public FilmBase {
 
         // Vector to store element 
         // with respective present index 
-        // pstd::vector<pstd::pair<Float, unsigned> > vp; 
+        std::vector<std::pair<Float, unsigned>> vp; 
     
         // Inserting element in pair vector 
         // to keep track of previous indexes 
-        // for (unsigned i = 0; i < nElements; i++) { 
-        //     vp.push_back(pstd::make_pair(means[i], i)); 
-        // }
+        for (unsigned i = 0; i < nElements; i++) { 
+            vp.push_back(std::make_pair(means[i], i)); 
+        }
 
-        // pstd::sort(vp.begin(), vp.end());
+        std::sort(vp.begin(), vp.end());
 
         Float weight, mean = 0.;
         // // compute median from means
-        // if (nElements % 2 == 1){
-        //     unsigned unsortedIndex = vp[int(nElements/2)].second;
+        if (nElements % 2 == 1){
+            unsigned unsortedIndex = vp[int(nElements/2)].second;
 
-        //     weight = weightsSum[unsortedIndex];
-        //     mean = means[unsortedIndex];
-        // }
-        // else{
-        //     int k_mean = int(nElements/2);
-        //     unsigned firstIndex = vp[k_mean - 1].second;
-        //     unsigned secondIndex = vp[k_mean].second;
+            weight = weightsSum[unsortedIndex];
+            mean = means[unsortedIndex];
+        }
+        else{
+            int k_mean = int(nElements/2);
+            unsigned firstIndex = vp[k_mean - 1].second;
+            unsigned secondIndex = vp[k_mean].second;
 
-        //     weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-        //     mean = (means[firstIndex] + means[secondIndex]) / 2;
-        // }
+            weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+            mean = (means[firstIndex] + means[secondIndex]) / 2;
+        }
 
         return Point2f(mean, weight);
     }
@@ -343,10 +344,10 @@ class RGBFilm : public FilmBase {
             index = 0;
             filled = false;
 
-            rvalues = pstd::vector<Float>(*Options->pixelSamples);
-            gvalues = pstd::vector<Float>(*Options->pixelSamples);
-            bvalues = pstd::vector<Float>(*Options->pixelSamples);
-            weightsSum = pstd::vector<Float>(*Options->pixelSamples);
+            rvalues = pstd::vector<Float>(*Options->monk);
+            gvalues = pstd::vector<Float>(*Options->monk);
+            bvalues = pstd::vector<Float>(*Options->monk);
+            weightsSum = pstd::vector<Float>(*Options->monk);
             // counters = std::vector<unsigned>();
         }
 
