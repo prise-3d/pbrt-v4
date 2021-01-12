@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <math.h>
 
 namespace pbrt {
 
@@ -284,23 +285,148 @@ class RGBFilm : public FilmBase {
             vp.push_back(std::make_pair(means[i], i)); 
         }
 
+        // means are here sorted and associated index are stored in `second`
         std::sort(vp.begin(), vp.end());
 
         Float weight, mean = 0.;
-        // // compute median from means
+
+        // compute median from means
+        // Classical MON
         if (nElements % 2 == 1){
             unsigned unsortedIndex = vp[int(nElements/2)].second;
 
-        // TODO : check here problem
+            weight = weightsSum[unsortedIndex];
+            mean = means[unsortedIndex];
+        }
+        else{
+            int k_mean = int(nElements/2);
+            unsigned firstIndex = vp[k_mean - 1].second;
+            unsigned secondIndex = vp[k_mean].second;
 
-        // Scale pixel value by _scale_
-        rgb *= scale;
+            weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+            mean = (means[firstIndex] + means[secondIndex]) / 2;
+        }
+        
+        // std::cout << "Pakmon value is " << *Options->pakmon << std::endl;
+        // Here use of PAKMON => compromise between Mean and MON
+        //if (*Options->pakmon >= 1) {
+            /* 
+            TODO : include here use of PakMON with entropy computation
+            => Adapt Python code
+            => check how to manage weight (weighted?)
+            */
+            /*
+            def variance_increase(means):
+                distances = []
+                l = sorted(means.copy())
+                
+                for i in range(len(means)):
+                    
+                    if i > 0:
+                        distances.append(np.var(l[:i]))
+                    
+                return distances
+            */
 
-        // Convert _rgb_ to output RGB color space
-        rgb = Mul<RGB>(outputRGBFromCameraRGB, rgb);
+            Float meansSum = 0;
 
-        // return rgb;
+            for (int i = 0; i < means.size(); i++)
+                meansSum += means[i];
+
+            Float currentMean = meansSum / means.size();
+                
+            
+            // compute variance distance evolution
+            pstd::vector<Float> distances;
+
+            for (int i = 0; i < vp.size(); i++) {
+                
+                // check if necessary to sort means
+                if (i > 1) {
+
+                    // compute variance of each elements
+                    Float var = 0;
+                    
+                    // use of previously sorted means
+                    for(int j = 0; j < i; j++)
+                    {
+                        var += (vp[j].first - currentMean) * (vp[j].first - currentMean);
+                    }
+                    var /= (i + 1);
+
+                    distances.push_back(var);
+                }
+               
+            }
+
+            // use of distances to compute entropy
+            Float distancesEntropy = getEntropy(distances);
+
+            std::cout << distancesEntropy << std::endl;
+        //}
+
         return Point2f(mean, weight);
+    }
+
+    Float getEntropy(pstd::vector<Float> values) const {
+        /*
+        arr = np.array(arr)
+        eigen_values = []
+        sum_eigen_values = (arr * arr).sum()
+
+        for val in arr:
+            eigen_values.append(val * val)
+
+        v = []
+
+        for val in eigen_values:
+            # avoid dividing by zero error
+            v.append(val / (sum_eigen_values + sys.float_info.epsilon))
+
+        entropy = 0
+
+        for val in v:
+            if val > 0:
+                entropy += val * math.log(val)
+
+        entropy *= -1
+
+        entropy /= math.log(len(v))
+
+        return entropy
+        */
+
+        // computation of squared values
+        Float sumEigenValues = 0;
+        pstd::vector<Float> eigenValues(values.size());
+
+        for (int i = 0; i < values.size(); i++) {
+            Float sum = values[i] * values[i];
+            eigenValues[i] = sum;
+            sumEigenValues += sum;
+        }
+
+        // normalization the squared values
+        pstd::vector<Float> v(values.size());
+
+        for (int i = 0; i < values.size(); i++) {
+            v[i] = eigenValues[i] / (sumEigenValues + std::numeric_limits<Float>::epsilon());
+        }
+
+        // computation of entropy
+        Float entropy = 0;
+
+        for (int i = 0; i < values.size(); i++) {
+            if (v[i] > 0) {
+                entropy += v[i] * log(v[i]);
+            }
+        }
+
+        entropy *= -1;
+
+        entropy /= log(values.size());
+
+        return entropy;
     }
 
     RGBFilm() = default;
@@ -366,7 +492,7 @@ class RGBFilm : public FilmBase {
     };
 
     // RGBFilm Private Members
-    Array2D<Pixel> pixels;
+    Array2D<PixelMON> pixels;
     Float scale;
     const RGBColorSpace *colorSpace;
     Float maxComponentValue;
