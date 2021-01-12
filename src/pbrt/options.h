@@ -39,6 +39,7 @@ struct PBRTOptions : BasicOptions {
     pstd::optional<int> startIndex = 0; // P3D updates: index of image to start with
     pstd::optional<int> ndigits = 6; // P3D updates: number of digits for file format
     pstd::optional<int> gpuDevice;
+    pstd::optional<int> monk; // P3D update k mon parameter
     std::string imageFile;
     std::string folderName = "temp"; // P3D updates: use of temp or specific folder where to save the computed images
     std::string mseReferenceImage, mseReferenceOutput;

@@ -181,6 +181,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "nimages", &options.nimages, onError) ||
             ParseArg(&argv, "startindex", &options.startIndex, onError) ||
             ParseArg(&argv, "folder", &options.folderName, onError) ||
+            ParseArg(&argv, "monk", &options.monk, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
             ParseArg(&argv, "upgrade", &options.upgrade, onError)) {
             // success
