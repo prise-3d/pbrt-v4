@@ -361,7 +361,7 @@ class RGBFilm : public FilmBase {
             // use of variance evolution and compute entropy
             Float distancesEntropy = getEntropy(distances);
 
-            // Computation of PakMON using \alpha and \kappa value
+            // Computation of PakMON using \alpha and \rho value
             unsigned middleIndex = int(nElements / 2);
 
             // alpha and rho automatically set value
