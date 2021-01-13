@@ -24,12 +24,11 @@ class TabulatedBSSRDF;
 
 class BSSRDFHandle : public TaggedPointer<TabulatedBSSRDF> {
   public:
-    // BSSRDFHandle Public Interface
+    // BSSRDF Interface
     using TaggedPointer::TaggedPointer;
 
-    PBRT_CPU_GPU inline SampledSpectrum S(const Point3f &p, const Vector3f &wi);
-
-    PBRT_CPU_GPU inline BSSRDFProbeSegment Sample(Float u1, const Point2f &u2) const;
+    PBRT_CPU_GPU inline pstd::optional<BSSRDFProbeSegment> SampleSp(Float u1,
+                                                                    Point2f u2) const;
 
     PBRT_CPU_GPU inline BSSRDFSample ProbeIntersectionToSample(
         const SubsurfaceInteraction &si, ScratchBuffer &scratchBuffer) const;

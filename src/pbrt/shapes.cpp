@@ -38,11 +38,12 @@ pstd::optional<ShapeSample> Sphere::Sample(const Point2f &u) const {
     // Reproject _pObj_ to sphere surface and compute _pObjError_
     pObj *= radius / Distance(pObj, Point3f(0, 0, 0));
     Vector3f pObjError = gamma(5) * Abs((Vector3f)pObj);
-    Point3fi pi = (*renderFromObject)(Point3fi(pObj, pObjError));
 
+    // Compute surface normal for sphere sample and return _ShapeSample_
     Normal3f n = Normalize((*renderFromObject)(Normal3f(pObj.x, pObj.y, pObj.z)));
     if (reverseOrientation)
         n *= -1;
+    Point3fi pi = (*renderFromObject)(Point3fi(pObj, pObjError));
     return ShapeSample{Interaction(pi, n), 1 / Area()};
 }
 
@@ -77,6 +78,8 @@ Bounds3f Disk::Bounds() const {
 
 DirectionCone Disk::NormalBounds() const {
     Normal3f n = (*renderFromObject)(Normal3f(0, 0, 1));
+    if (reverseOrientation)
+        n = -n;
     return DirectionCone(Vector3f(n));
 }
 
@@ -151,102 +154,11 @@ void Triangle::Init(Allocator alloc) {
 
 STAT_MEMORY_COUNTER("Memory/Triangles", triangleBytes);
 
-// Triangle Method Definitions
-pstd::vector<ShapeHandle> Triangle::CreateTriangles(const TriangleMesh *mesh,
-                                                    Allocator alloc) {
-    CHECK_LT(allMeshes->size(), 1 << 31);
-    int meshIndex = int(allMeshes->size());
-    allMeshes->push_back(mesh);
-
-    pstd::vector<ShapeHandle> tris(mesh->nTriangles, alloc);
-    Triangle *t = alloc.allocate_object<Triangle>(mesh->nTriangles);
-    for (int i = 0; i < mesh->nTriangles; ++i) {
-        alloc.construct(&t[i], meshIndex, i);
-        tris[i] = &t[i];
-    }
-    triangleBytes += mesh->nTriangles * sizeof(Triangle);
-    return tris;
-}
-
-Bounds3f Triangle::Bounds() const {
-    // Get triangle vertices in _p0_, _p1_, and _p2_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[3 * triIndex];
-    const Point3f &p0 = mesh->p[v[0]], &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-
-    return Union(Bounds3f(p0, p1), p2);
-}
-
-DirectionCone Triangle::NormalBounds() const {
-    // Get triangle vertices in _p0_, _p1_, and _p2_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[3 * triIndex];
-    const Point3f &p0 = mesh->p[v[0]], &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-
-    // Compute surface normal for sampled point on triangle
-    Normal3f n = Normalize(Normal3f(Cross(p1 - p0, p2 - p0)));
-    // Ensure correct orientation of the geometric normal; follow the same
-    // approach as was used in Triangle::Intersect().
-    if (mesh->n != nullptr) {
-        // TODO: um, can this be different at different points on the
-        // triangle, and if so, what is the implication for NormalBounds()?
-        Normal3f ns(mesh->n[v[0]] + mesh->n[v[1]] + mesh->n[v[2]]);
-        n = FaceForward(n, ns);
-    } else if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
-        n *= -1;
-
-    return DirectionCone(Vector3f(n));
-}
-
-pstd::optional<ShapeIntersection> Triangle::Intersect(const Ray &ray, Float tMax) const {
-#ifndef PBRT_IS_GPU_CODE
-    ++nTriTests;
-#endif
-    // Get triangle vertices in _p0_, _p1_, and _p2_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[3 * triIndex];
-    const Point3f &p0 = mesh->p[v[0]], &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-
-    pstd::optional<TriangleIntersection> triIsect = Intersect(ray, tMax, p0, p1, p2);
-    if (!triIsect)
-        return {};
-
-    Float b0 = triIsect->b0, b1 = triIsect->b1, b2 = triIsect->b2;
-    SurfaceInteraction intr = Triangle::InteractionFromIntersection(
-        mesh, triIndex, {b0, b1, b2}, ray.time, -ray.d);
-#ifndef PBRT_IS_GPU_CODE
-    ++nTriHits;
-#endif
-    return ShapeIntersection{intr, triIsect->t};
-}
-
-bool Triangle::IntersectP(const Ray &ray, Float tMax) const {
-#ifndef PBRT_IS_GPU_CODE
-    ++nTriTests;
-#endif
-    // Get triangle vertices in _p0_, _p1_, and _p2_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[3 * triIndex];
-    const Point3f &p0 = mesh->p[v[0]], &p1 = mesh->p[v[1]];
-    const Point3f &p2 = mesh->p[v[2]];
-
-    pstd::optional<TriangleIntersection> isect = Intersect(ray, tMax, p0, p1, p2);
-    if (isect) {
-#ifndef PBRT_IS_GPU_CODE
-        ++nTriHits;
-#endif
-        return true;
-    } else
-        return false;
-}
-
-pstd::optional<TriangleIntersection> Triangle::Intersect(const Ray &ray, Float tMax,
-                                                         const Point3f &p0,
-                                                         const Point3f &p1,
-                                                         const Point3f &p2) {
+// Triangle Functions
+pstd::optional<TriangleIntersection> IntersectTriangle(const Ray &ray, Float tMax,
+                                                       const Point3f &p0,
+                                                       const Point3f &p1,
+                                                       const Point3f &p2) {
     // Return no intersection if triangle is degenerate
     if (LengthSquared(Cross(p2 - p0, p1 - p0)) == 0)
         return {};
@@ -318,9 +230,7 @@ pstd::optional<TriangleIntersection> Triangle::Intersect(const Ray &ray, Float t
 
     // Compute barycentric coordinates and $t$ value for triangle intersection
     Float invDet = 1 / det;
-    Float b0 = e0 * invDet;
-    Float b1 = e1 * invDet;
-    Float b2 = e2 * invDet;
+    Float b0 = e0 * invDet, b1 = e1 * invDet, b2 = e2 * invDet;
     Float t = tScaled * invDet;
     DCHECK(!IsNaN(t));
 
@@ -347,6 +257,93 @@ pstd::optional<TriangleIntersection> Triangle::Intersect(const Ray &ray, Float t
 
     // Return _TriangleIntersection_ for intersection
     return TriangleIntersection{b0, b1, b2, t};
+}
+
+// Triangle Method Definitions
+pstd::vector<ShapeHandle> Triangle::CreateTriangles(const TriangleMesh *mesh,
+                                                    Allocator alloc) {
+    static std::mutex allMeshesLock;
+    allMeshesLock.lock();
+    CHECK_LT(allMeshes->size(), 1 << 31);
+    int meshIndex = int(allMeshes->size());
+    allMeshes->push_back(mesh);
+    allMeshesLock.unlock();
+
+    pstd::vector<ShapeHandle> tris(mesh->nTriangles, alloc);
+    Triangle *t = alloc.allocate_object<Triangle>(mesh->nTriangles);
+    for (int i = 0; i < mesh->nTriangles; ++i) {
+        alloc.construct(&t[i], meshIndex, i);
+        tris[i] = &t[i];
+    }
+    triangleBytes += mesh->nTriangles * sizeof(Triangle);
+    return tris;
+}
+
+Bounds3f Triangle::Bounds() const {
+    // Get triangle vertices in _p0_, _p1_, and _p2_
+    const TriangleMesh *mesh = GetMesh();
+    const int *v = &mesh->vertexIndices[3 * triIndex];
+    Point3f p0 = mesh->p[v[0]], p1 = mesh->p[v[1]], p2 = mesh->p[v[2]];
+
+    return Union(Bounds3f(p0, p1), p2);
+}
+
+DirectionCone Triangle::NormalBounds() const {
+    // Get triangle vertices in _p0_, _p1_, and _p2_
+    const TriangleMesh *mesh = GetMesh();
+    const int *v = &mesh->vertexIndices[3 * triIndex];
+    Point3f p0 = mesh->p[v[0]], p1 = mesh->p[v[1]], p2 = mesh->p[v[2]];
+
+    Normal3f n = Normalize(Normal3f(Cross(p1 - p0, p2 - p0)));
+    // Ensure correct orientation of geometric normal for normal bounds
+    if (mesh->n != nullptr) {
+        Normal3f ns(mesh->n[v[0]] + mesh->n[v[1]] + mesh->n[v[2]]);
+        n = FaceForward(n, ns);
+    } else if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
+        n *= -1;
+
+    return DirectionCone(Vector3f(n));
+}
+
+pstd::optional<ShapeIntersection> Triangle::Intersect(const Ray &ray, Float tMax) const {
+#ifndef PBRT_IS_GPU_CODE
+    ++nTriTests;
+#endif
+    // Get triangle vertices in _p0_, _p1_, and _p2_
+    const TriangleMesh *mesh = GetMesh();
+    const int *v = &mesh->vertexIndices[3 * triIndex];
+    Point3f p0 = mesh->p[v[0]], p1 = mesh->p[v[1]], p2 = mesh->p[v[2]];
+
+    pstd::optional<TriangleIntersection> triIsect =
+        IntersectTriangle(ray, tMax, p0, p1, p2);
+    if (!triIsect)
+        return {};
+
+    SurfaceInteraction intr =
+        InteractionFromIntersection(mesh, triIndex, *triIsect, ray.time, -ray.d);
+#ifndef PBRT_IS_GPU_CODE
+    ++nTriHits;
+#endif
+    return ShapeIntersection{intr, triIsect->t};
+}
+
+bool Triangle::IntersectP(const Ray &ray, Float tMax) const {
+#ifndef PBRT_IS_GPU_CODE
+    ++nTriTests;
+#endif
+    // Get triangle vertices in _p0_, _p1_, and _p2_
+    const TriangleMesh *mesh = GetMesh();
+    const int *v = &mesh->vertexIndices[3 * triIndex];
+    Point3f p0 = mesh->p[v[0]], p1 = mesh->p[v[1]], p2 = mesh->p[v[2]];
+
+    pstd::optional<TriangleIntersection> isect = IntersectTriangle(ray, tMax, p0, p1, p2);
+    if (isect) {
+#ifndef PBRT_IS_GPU_CODE
+        ++nTriHits;
+#endif
+        return true;
+    } else
+        return false;
 }
 
 std::string Triangle::ToString() const {
@@ -513,11 +510,14 @@ pstd::vector<ShapeHandle> CreateCurve(const Transform *renderFromObject,
 
 // Curve Method Definitions
 Bounds3f Curve::Bounds() const {
-    Bounds3f b =
-        BoundCubicBezier<Bounds3f>(pstd::MakeConstSpan(common->cpObj), uMin, uMax);
+    pstd::span<const Point3f> cpSpan(common->cpObj);
+    Bounds3f objBounds = BoundCubicBezier(cpSpan, uMin, uMax);
+    // Expand _objBounds_ by maximum curve width over $u$ range
     Float width[2] = {Lerp(uMin, common->width[0], common->width[1]),
                       Lerp(uMax, common->width[0], common->width[1])};
-    return (*common->renderFromObject)(Expand(b, std::max(width[0], width[1]) * 0.5f));
+    objBounds = Expand(objBounds, std::max(width[0], width[1]) * 0.5f);
+
+    return (*common->renderFromObject)(objBounds);
 }
 
 Float Curve::Area() const {
@@ -534,72 +534,43 @@ Float Curve::Area() const {
 
 pstd::optional<ShapeIntersection> Curve::Intersect(const Ray &ray, Float tMax) const {
     pstd::optional<ShapeIntersection> si;
-    intersect(ray, tMax, &si);
+    IntersectRay(ray, tMax, &si);
     return si;
 }
 
 bool Curve::IntersectP(const Ray &ray, Float tMax) const {
-    return intersect(ray, tMax, nullptr);
+    return IntersectRay(ray, tMax, nullptr);
 }
 
-bool Curve::intersect(const Ray &r, Float tMax,
-                      pstd::optional<ShapeIntersection> *si) const {
+bool Curve::IntersectRay(const Ray &r, Float tMax,
+                         pstd::optional<ShapeIntersection> *si) const {
 #ifndef PBRT_IS_GPU_CODE
     ++nCurveTests;
 #endif
     // Transform _Ray_ to curve's object space
-    Point3fi oi = (*common->objectFromRender)(Point3fi(r.o));
-    Vector3fi di = (*common->objectFromRender)(Vector3fi(r.d));
-    Ray ray(Point3f(oi), Vector3f(di), r.time, r.medium);
+    Ray ray = (*common->objectFromRender)(r);
 
-    // Compute object-space control points for curve segment, _cpObj_
+    // Get object-space control points for curve segment, _cpObj_
     pstd::array<Point3f, 4> cpObj =
-        CubicBezierControlPoints(pstd::MakeConstSpan(common->cpObj), uMin, uMax);
+        CubicBezierControlPoints(pstd::span<const Point3f>(common->cpObj), uMin, uMax);
 
     // Project curve control points to plane perpendicular to ray
-    // Be careful to set the "up" direction passed to LookAt() to equal the
-    // vector from the first to the last control points.  In turn, this
-    // helps orient the curve to be roughly parallel to the x axis in the
-    // ray coordinate system.
-    //
-    // In turn (especially for curves that are approaching stright lines),
-    // we get curve bounds with minimal extent in y, which in turn lets us
-    // early out more quickly in recursiveIntersect().
     Vector3f dx = Cross(ray.d, cpObj[3] - cpObj[0]);
     if (LengthSquared(dx) == 0) {
-        // If the ray and the vector between the first and last control
-        // points are parallel, dx will be zero.  Generate an arbitrary xy
-        // orientation for the ray coordinate system so that intersection
-        // tests can proceeed in this unusual case.
         Vector3f dy;
         CoordinateSystem(ray.d, &dx, &dy);
     }
-
-    Transform RayFromObject = LookAt(ray.o, ray.o + ray.d, dx);
-    pstd::array<Point3f, 4> cp = {RayFromObject(cpObj[0]), RayFromObject(cpObj[1]),
-                                  RayFromObject(cpObj[2]), RayFromObject(cpObj[3])};
+    Transform rayFromObject = LookAt(ray.o, ray.o + ray.d, dx);
+    pstd::array<Point3f, 4> cp = {rayFromObject(cpObj[0]), rayFromObject(cpObj[1]),
+                                  rayFromObject(cpObj[2]), rayFromObject(cpObj[3])};
 
     // Test ray against bound of projected control points
-    // Before going any further, see if the ray's bounding box intersects
-    // the curve's bounding box. We start with the y dimension, since the y
-    // extent is generally the smallest (and is often tiny) due to our
-    // careful orientation of the ray coordinate system above.
     Float maxWidth = std::max(Lerp(uMin, common->width[0], common->width[1]),
                               Lerp(uMax, common->width[0], common->width[1]));
-    if (std::max({cp[0].y, cp[1].y, cp[2].y, cp[3].y}) + 0.5f * maxWidth < 0 ||
-        std::min({cp[0].y, cp[1].y, cp[2].y, cp[3].y}) - 0.5f * maxWidth > 0)
-        return false;
-
-    // Check for non-overlap in x.
-    if (std::max({cp[0].x, cp[1].x, cp[2].x, cp[3].x}) + 0.5f * maxWidth < 0 ||
-        std::min({cp[0].x, cp[1].x, cp[2].x, cp[3].x}) - 0.5f * maxWidth > 0)
-        return false;
-
-    // Check for non-overlap in z.
-    Float rayLength = Length(ray.d);
-    Float zMax = rayLength * tMax;
-    if (std::max({cp[0].z, cp[1].z, cp[2].z, cp[3].z}) + 0.5f * maxWidth < 0 ||
-        std::min({cp[0].z, cp[1].z, cp[2].z, cp[3].z}) - 0.5f * maxWidth > zMax)
+    Bounds3f curveBounds = Union(Bounds3f(cp[0], cp[1]), Bounds3f(cp[2], cp[3]));
+    curveBounds = Expand(curveBounds, 0.5f * maxWidth);
+    Bounds3f rayBounds(Point3f(0, 0, 0), Point3f(0, 0, Length(ray.d) * tMax));
+    if (!Overlaps(rayBounds, curveBounds))
         return false;
 
     // Compute refinement depth for curve, _maxDepth_
@@ -609,55 +580,44 @@ bool Curve::intersect(const Ray &r, Float tMax,
             L0, std::max(std::max(std::abs(cp[i].x - 2 * cp[i + 1].x + cp[i + 2].x),
                                   std::abs(cp[i].y - 2 * cp[i + 1].y + cp[i + 2].y)),
                          std::abs(cp[i].z - 2 * cp[i + 1].z + cp[i + 2].z)));
+    int maxDepth = 0;
+    if (L0 > 0) {
+        Float eps = std::max(common->width[0], common->width[1]) * .05f;  // width / 20
+        // Compute log base 4 by dividing log2 in half.
+        int r0 = Log2Int(1.41421356237f * 6.f * L0 / (8.f * eps)) / 2;
+        maxDepth = Clamp(r0, 0, 10);
+    }
 
-    Float eps = std::max(common->width[0], common->width[1]) * .05f;  // width / 20
-    // Compute log base 4 by dividing log2 in half.
-    int r0 = Log2Int(1.41421356237f * 6.f * L0 / (8.f * eps)) / 2;
-    int maxDepth = Clamp(r0, 0, 10);
-
-    return recursiveIntersect(ray, tMax, pstd::MakeConstSpan(cp), Inverse(RayFromObject),
-                              uMin, uMax, maxDepth, si);
+    // Recursively test for ray--curve intersection
+    pstd::span<const Point3f> cpSpan(cp);
+    return RecursiveIntersect(ray, tMax, cpSpan, Inverse(rayFromObject), uMin, uMax,
+                              maxDepth, si);
 }
 
-bool Curve::recursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Point3f> cp,
+bool Curve::RecursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Point3f> cp,
                                const Transform &ObjectFromRay, Float u0, Float u1,
                                int depth, pstd::optional<ShapeIntersection> *si) const {
     Float rayLength = Length(ray.d);
     if (depth > 0) {
         // Split curve segment into sub-segments and test for intersection
         pstd::array<Point3f, 7> cpSplit = SubdivideCubicBezier(cp);
-        Float u[3] = {u0, (u0 + u1) / 2.f, u1};
+        Float u[3] = {u0, (u0 + u1) / 2, u1};
         for (int seg = 0; seg < 2; ++seg) {
             // Check ray against curve segment's bounding box
             Float maxWidth =
                 std::max(Lerp(u[seg], common->width[0], common->width[1]),
                          Lerp(u[seg + 1], common->width[0], common->width[1]));
-
-            // As above, check y first, since it most commonly lets us exit
-            // out early.
             pstd::span<const Point3f> cps = pstd::MakeConstSpan(&cpSplit[3 * seg], 4);
-            if (std::max({cps[0].y, cps[1].y, cps[2].y, cps[3].y}) + 0.5f * maxWidth <
-                    0 ||
-                std::min({cps[0].y, cps[1].y, cps[2].y, cps[3].y}) - 0.5f * maxWidth > 0)
-                continue;
-
-            if (std::max({cps[0].x, cps[1].x, cps[2].x, cps[3].x}) + 0.5f * maxWidth <
-                    0 ||
-                std::min({cps[0].x, cps[1].x, cps[2].x, cps[3].x}) - 0.5f * maxWidth > 0)
-                continue;
-
-            Float zMax = rayLength * ((si && *si) ? (*si)->tHit : tMax);
-            if (std::max({cps[0].z, cps[1].z, cps[2].z, cps[3].z}) + 0.5f * maxWidth <
-                    0 ||
-                std::min({cps[0].z, cps[1].z, cps[2].z, cps[3].z}) - 0.5f * maxWidth >
-                    zMax)
+            Bounds3f curveBounds =
+                Union(Bounds3f(cps[0], cps[1]), Bounds3f(cps[2], cps[3]));
+            curveBounds = Expand(curveBounds, 0.5f * maxWidth);
+            Bounds3f rayBounds(Point3f(0, 0, 0), Point3f(0, 0, Length(ray.d) * tMax));
+            if (!Overlaps(rayBounds, curveBounds))
                 continue;
 
             // Recursively test ray-segment intersection
-            bool hit = recursiveIntersect(ray, tMax, cps, ObjectFromRay, u[seg],
+            bool hit = RecursiveIntersect(ray, tMax, cps, ObjectFromRay, u[seg],
                                           u[seg + 1], depth - 1, si);
-            // If we found an intersection and this is a shadow ray,
-            // we can exit out immediately.
             if (hit && si == nullptr)
                 return true;
         }
@@ -676,12 +636,12 @@ bool Curve::recursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
         if (edge < 0)
             return false;
 
-        // Compute line $w$ that gives minimum distance to sample point
-        Vector2f segmentDirection = Point2f(cp[3].x, cp[3].y) - Point2f(cp[0].x, cp[0].y);
-        Float denom = LengthSquared(segmentDirection);
+        // Find line $w$ that gives minimum distance to sample point
+        Vector2f segmentDir = Point2f(cp[3].x, cp[3].y) - Point2f(cp[0].x, cp[0].y);
+        Float denom = LengthSquared(segmentDir);
         if (denom == 0)
             return false;
-        Float w = Dot(-Vector2f(cp[0].x, cp[0].y), segmentDirection) / denom;
+        Float w = Dot(-Vector2f(cp[0].x, cp[0].y), segmentDir) / denom;
 
         // Compute $u$ coordinate of curve intersection point and _hitWidth_
         Float u = Clamp(Lerp(w, u0, u1), u0, u1);
@@ -689,38 +649,42 @@ bool Curve::recursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
         Normal3f nHit;
         if (common->type == CurveType::Ribbon) {
             // Scale _hitWidth_ based on ribbon orientation
-            Float sin0 =
-                std::sin((1 - u) * common->normalAngle) * common->invSinNormalAngle;
-            Float sin1 = std::sin(u * common->normalAngle) * common->invSinNormalAngle;
-            nHit = sin0 * common->n[0] + sin1 * common->n[1];
+            if (common->normalAngle == 0)
+                nHit = common->n[0];
+            else {
+                Float sin0 =
+                    std::sin((1 - u) * common->normalAngle) * common->invSinNormalAngle;
+                Float sin1 =
+                    std::sin(u * common->normalAngle) * common->invSinNormalAngle;
+                nHit = sin0 * common->n[0] + sin1 * common->n[1];
+            }
             hitWidth *= AbsDot(nHit, ray.d) / rayLength;
         }
 
         // Test intersection point against curve width
         Vector3f dpcdw;
-        Point3f pc = EvaluateCubicBezier(pstd::MakeConstSpan(cp), Clamp(w, 0, 1), &dpcdw);
+        Point3f pc =
+            EvaluateCubicBezier(pstd::span<const Point3f>(cp), Clamp(w, 0, 1), &dpcdw);
         Float ptCurveDist2 = pc.x * pc.x + pc.y * pc.y;
         if (ptCurveDist2 > hitWidth * hitWidth * .25f)
             return false;
-        Float zMax = rayLength * tMax;
-        if (pc.z < 0 || pc.z > zMax)
+        if (pc.z < 0 || pc.z > rayLength * tMax)
             return false;
 
-        // Compute hit _t_ and partial derivatives for curve intersection
         if (si != nullptr) {
+            // Initialize _ShapeIntersection_ for curve intersection
+            // Compute _tHit_ for curve intersection
+            // FIXME: this tHit isn't quite right for ribbons...
+            Float tHit = pc.z / rayLength;
+            if (si->has_value() && tHit > si->value().tHit)
+                return false;
+
+            // Initialize _SurfaceInteraction_ _intr_ for curve intersection
             // Compute $v$ coordinate of curve intersection point
             Float ptCurveDist = std::sqrt(ptCurveDist2);
             Float edgeFunc = dpcdw.x * -pc.y + pc.x * dpcdw.y;
             Float v = (edgeFunc > 0) ? 0.5f + ptCurveDist / hitWidth
                                      : 0.5f - ptCurveDist / hitWidth;
-
-            // FIXME: this tHit isn't quite right for ribbons...
-            Float tHit = pc.z / rayLength;
-            DCHECK_LT(tHit, 1.0001 * tMax);
-            if (*si)
-                DCHECK_LT(tHit, 1.001 * (*si)->tHit);  // ???
-            // Compute error bounds for curve intersection
-            Vector3f pError(2 * hitWidth, 2 * hitWidth, 2 * hitWidth);
 
             // Compute $\dpdu$ and $\dpdv$ for curve intersection
             Vector3f dpdu, dpdv;
@@ -742,15 +706,18 @@ bool Curve::recursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
                 dpdv = ObjectFromRay(dpdvPlane);
             }
 
-            Point3f pHit = ray(tHit);
-            Point3fi pe(pHit, pError);
-            *si = {{(*common->renderFromObject)(SurfaceInteraction(
-                        pe, Point2f(u, v), -ray.d, dpdu, dpdv, Normal3f(0, 0, 0),
-                        Normal3f(0, 0, 0), ray.time,
-                        OrientationIsReversed() ^ TransformSwapsHandedness())),
-                    tHit}};
-        }
+            // Compute error bounds for curve intersection
+            Vector3f pError(2 * hitWidth, 2 * hitWidth, 2 * hitWidth);
 
+            bool flipNormal =
+                common->reverseOrientation ^ common->transformSwapsHandedness;
+            Point3fi pi(ray(tHit), pError);
+            SurfaceInteraction intr(pi, {u, v}, -ray.d, dpdu, dpdv, Normal3f(),
+                                    Normal3f(), ray.time, flipNormal);
+            intr = (*common->renderFromObject)(intr);
+
+            *si = ShapeIntersection{intr, tHit};
+        }
 #ifndef PBRT_IS_GPU_CODE
         ++nCurveHits;
 #endif
@@ -1015,15 +982,17 @@ BilinearPatchMesh *BilinearPatch::CreateMesh(const Transform *renderFromObject,
 
 pstd::vector<ShapeHandle> BilinearPatch::CreatePatches(const BilinearPatchMesh *mesh,
                                                        Allocator alloc) {
+    static std::mutex allMeshesLock;
+    allMeshesLock.lock();
     CHECK_LT(allMeshes->size(), 1 << 31);
     int meshIndex = int(allMeshes->size());
-
     allMeshes->push_back(mesh);
+    allMeshesLock.unlock();
 
     pstd::vector<ShapeHandle> blps(mesh->nPatches, alloc);
     BilinearPatch *patches = alloc.allocate_object<BilinearPatch>(mesh->nPatches);
     for (int i = 0; i < mesh->nPatches; ++i) {
-        alloc.construct(&patches[i], meshIndex, i);
+        alloc.construct(&patches[i], mesh, meshIndex, i);
         blps[i] = &patches[i];
     }
 
@@ -1047,16 +1016,14 @@ void BilinearPatch::Init(Allocator alloc) {
 STAT_MEMORY_COUNTER("Memory/Bilinear patches", blpBytes);
 
 // BilinearPatch Method Definitions
-BilinearPatch::BilinearPatch(int meshIndex, int blpIndex)
+BilinearPatch::BilinearPatch(const BilinearPatchMesh *mesh, int meshIndex, int blpIndex)
     : meshIndex(meshIndex), blpIndex(blpIndex) {
     blpBytes += sizeof(*this);
-    // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    // Store area of bilinear patch in _area_
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
-
-    if (IsQuad())
+    if (IsRectangle(mesh))
         area = Distance(p00, p01) * Distance(p00, p10);
     else {
         // Compute approximate area of bilinear patch
@@ -1076,18 +1043,12 @@ BilinearPatch::BilinearPatch(int meshIndex, int blpIndex)
             for (int j = 0; j < na; ++j)
                 area += 0.5f * Length(Cross(p[i + 1][j + 1] - p[i][j],
                                             p[i + 1][j] - p[i][j + 1]));
-#if 0
-fprintf(stderr, "area old a %f, old b %f, subsampled %f\n", 0.5 * Length(Cross(p11 - p00, p10 - p01)),
-        0.5 * (Length(Cross(p01 - p00, p10 - p00)) +
-               Length(Cross(p01 - p11, p10 - p11))),
-        area);
-#endif
     }
 }
 
 Bounds3f BilinearPatch::Bounds() const {
     // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    const BilinearPatchMesh *mesh = GetMesh();
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
@@ -1095,48 +1056,50 @@ Bounds3f BilinearPatch::Bounds() const {
     return Union(Bounds3f(p00, p01), Bounds3f(p10, p11));
 }
 
-Float BilinearPatch::Area() const {
-    return area;
-}
-
-bool BilinearPatch::IsQuad() const {
-    // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[4 * blpIndex];
-    const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
-    const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
-
-    Point3f p11quad = p00 + (p10 - p00) + (p01 - p00);
-    Float diag = std::max(Distance(p00, p11), Distance(p01, p11));
-    return Distance(p11quad, p11) < .001f * diag;
-}
-
 DirectionCone BilinearPatch::NormalBounds() const {
-    // Ignore shading normal...
-
     // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    const BilinearPatchMesh *mesh = GetMesh();
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
 
-    Float flip = (OrientationIsReversed() ^ TransformSwapsHandedness()) ? -1 : 1;
-
+    // If patch is a triangle, return bounds for single surface normal
     if (p00 == p10 || p10 == p11 || p11 == p01 || p01 == p00) {
-        // it's a triangle. Evaluate the normal at the center so we don't
-        // have to worry about the degeneracies.
         Vector3f dpdu = Lerp(0.5f, p10, p11) - Lerp(0.5f, p00, p01);
         Vector3f dpdv = Lerp(0.5f, p01, p11) - Lerp(0.5f, p00, p10);
-        Vector3f n = flip * Normalize(Cross(dpdu, dpdv));
+        Vector3f n = Normalize(Cross(dpdu, dpdv));
+        if (mesh->n != nullptr) {
+            Normal3f ns =
+                (mesh->n[v[0]] + mesh->n[v[1]] + mesh->n[v[2]] + mesh->n[v[3]]) / 4;
+            n = FaceForward(n, ns);
+        } else if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
+            n = -n;
         return DirectionCone(n);
     }
 
-    Vector3f n00 = flip * Normalize(Cross(p10 - p00, p01 - p00));
-    Vector3f n10 = flip * Normalize(Cross(p11 - p10, p00 - p10));
-    Vector3f n01 = flip * Normalize(Cross(p00 - p01, p11 - p01));
-    Vector3f n11 = flip * Normalize(Cross(p01 - p11, p10 - p11));
+    // Compute bilinear patch normal _n00_ at $(0,0)$
+    Vector3f n00 = Normalize(Cross(p10 - p00, p01 - p00));
+    if (mesh->n != nullptr)
+        n00 = FaceForward(n00, mesh->n[v[0]]);
+    else if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
+        n00 = -n00;
 
-    Vector3f n = flip * Normalize(n00 + n10 + n01 + n11);
+    // Compute bilinear patch normals _n10_, _n01_, and _n11_
+    Vector3f n10 = Normalize(Cross(p11 - p10, p00 - p10));
+    Vector3f n01 = Normalize(Cross(p00 - p01, p11 - p01));
+    Vector3f n11 = Normalize(Cross(p01 - p11, p10 - p11));
+    if (mesh->n != nullptr) {
+        n10 = FaceForward(n10, mesh->n[v[1]]);
+        n01 = FaceForward(n01, mesh->n[v[2]]);
+        n11 = FaceForward(n11, mesh->n[v[3]]);
+    } else if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness) {
+        n10 = -n10;
+        n01 = -n01;
+        n11 = -n11;
+    }
+
+    // Compute average normal and return normal bounds for patch
+    Vector3f n = Normalize(n00 + n10 + n01 + n11);
     Float cosTheta = std::min({Dot(n, n00), Dot(n, n01), Dot(n, n10), Dot(n, n11)});
     return DirectionCone(n, Clamp(cosTheta, -1, 1));
 }
@@ -1144,13 +1107,13 @@ DirectionCone BilinearPatch::NormalBounds() const {
 pstd::optional<ShapeIntersection> BilinearPatch::Intersect(const Ray &ray,
                                                            Float tMax) const {
     // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    const BilinearPatchMesh *mesh = GetMesh();
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
 
     pstd::optional<BilinearIntersection> blpIsect =
-        Intersect(ray, tMax, p00, p10, p01, p11);
+        IntersectBilinearPatch(ray, tMax, p00, p10, p01, p11);
     if (!blpIsect)
         return {};
     SurfaceInteraction intr =
@@ -1160,55 +1123,112 @@ pstd::optional<ShapeIntersection> BilinearPatch::Intersect(const Ray &ray,
 
 bool BilinearPatch::IntersectP(const Ray &ray, Float tMax) const {
     // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    const BilinearPatchMesh *mesh = GetMesh();
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
 
-    return Intersect(ray, tMax, p00, p10, p01, p11).has_value();
+    return IntersectBilinearPatch(ray, tMax, p00, p10, p01, p11).has_value();
+}
+
+pstd::optional<ShapeSample> BilinearPatch::Sample(Point2f u) const {
+    // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
+    const BilinearPatchMesh *mesh = GetMesh();
+    const int *v = &mesh->vertexIndices[4 * blpIndex];
+    const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
+    const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
+
+    // Sample bilinear patch parametric $(u,v)$ coordinates
+    Float pdf = 1;
+    Point2f uv;
+    if (mesh->imageDistribution) {
+        uv = mesh->imageDistribution->Sample(u, &pdf);
+        uv[1] = 1 - uv[1];
+    } else if (!IsRectangle(mesh)) {
+        // Sample patch $(u,v)$ with approximate uniform area sampling
+        // Initialize _w_ array with differential area at bilinear patch corners
+        pstd::array<Float, 4> w = {
+            Length(Cross(p10 - p00, p01 - p00)), Length(Cross(p10 - p00, p11 - p10)),
+            Length(Cross(p01 - p00, p11 - p01)), Length(Cross(p11 - p10, p11 - p01))};
+
+        uv = SampleBilinear(u, w);
+        pdf = BilinearPDF(uv, w);
+
+    } else
+        uv = u;
+
+    // Compute position, $\dpdu$, and $\dpdv$ for sampled bilinear patch $(u,v)$
+    Point3f pu0 = Lerp(uv[1], p00, p01), pu1 = Lerp(uv[1], p10, p11);
+    Point3f p = Lerp(uv[0], pu0, pu1);
+    Vector3f dpdu = pu1 - pu0;
+    Vector3f dpdv = Lerp(uv[0], p01, p11) - Lerp(uv[0], p00, p10);
+    if (LengthSquared(dpdu) == 0 || LengthSquared(dpdv) == 0)
+        return {};
+
+    // Compute surface normal for sampled bilinear patch $(u,v)$
+    Normal3f n = Normal3f(Normalize(Cross(dpdu, dpdv)));
+    if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
+        n = -n;
+
+    // Compute _pError_ for sampled bilinear patch $(u,v)$
+    Vector3f pError =
+        gamma(4) * Vector3f(Max(Max(Abs(p00), Abs(p10)), Max(Abs(p01), Abs(p11))));
+
+    // Return _ShapeSample_ for sampled bilinear patch point
+    return ShapeSample{Interaction(Point3fi(p, pError), n, uv),
+                       pdf / Length(Cross(dpdu, dpdv))};
+}
+
+Float BilinearPatch::PDF(const Interaction &intr) const {
+    // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
+    const BilinearPatchMesh *mesh = GetMesh();
+    const int *v = &mesh->vertexIndices[4 * blpIndex];
+    const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
+    const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
+
+    // Compute PDF for sampling the $(u,v)$ coordinates given by _intr.uv_
+    Float pdf;
+    if (mesh->imageDistribution)
+        pdf = mesh->imageDistribution->PDF(Point2f(intr.uv[0], 1 - intr.uv[1]));
+    else if (!IsRectangle(mesh)) {
+        // Initialize _w_ array with differential area at bilinear patch corners
+        pstd::array<Float, 4> w = {
+            Length(Cross(p10 - p00, p01 - p00)), Length(Cross(p10 - p00, p11 - p10)),
+            Length(Cross(p01 - p00, p11 - p01)), Length(Cross(p11 - p10, p11 - p01))};
+
+        pdf = BilinearPDF(intr.uv, w);
+    } else
+        pdf = 1;
+
+    // Find $\dpdu$ and $\dpdv$ at bilinear patch $(u,v)$
+    CHECK(!intr.uv.HasNaN());
+    Point3f pu0 = Lerp(intr.uv[1], p00, p01), pu1 = Lerp(intr.uv[1], p10, p11);
+    Vector3f dpdu = pu1 - pu0;
+    Vector3f dpdv = Lerp(intr.uv[0], p01, p11) - Lerp(intr.uv[0], p00, p10);
+
+    // Return final bilinear patch area sampling PDF
+    return pdf / Length(Cross(dpdu, dpdv));
 }
 
 pstd::optional<ShapeSample> BilinearPatch::Sample(const ShapeSampleContext &ctx,
-                                                  const Point2f &uo) const {
+                                                  Point2f u) const {
     // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    const BilinearPatchMesh *mesh = GetMesh();
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
 
-    Vector3f v00 = Normalize(p00 - ctx.p());
-    Vector3f v10 = Normalize(p10 - ctx.p());
-    Vector3f v01 = Normalize(p01 - ctx.p());
-    Vector3f v11 = Normalize(p11 - ctx.p());
+    // Find normalized vectors to corners of bilinear patch
+    Vector3f v00 = Normalize(p00 - ctx.p()), v10 = Normalize(p10 - ctx.p());
+    Vector3f v01 = Normalize(p01 - ctx.p()), v11 = Normalize(p11 - ctx.p());
 
-    if (IsQuad() && SphericalQuadArea(v00, v10, v11, v01) > MinSphericalSampleArea) {
+    if (IsRectangle(mesh) && !mesh->imageDistribution &&
+        SphericalQuadArea(v00, v10, v11, v01) > MinSphericalSampleArea) {
+        // Sample direction to rectanglular bilinear patch
         Float pdf = 1;
-        Point2f u = uo;
-        if (mesh->imageDistribution) {
-            if (u[0] < 0.5) {
-                u[0] = std::min(2.f * u[0], OneMinusEpsilon);
-
-                Float pdf;
-                u = mesh->imageDistribution->Sample(u, &pdf);
-
-                Point3f p = Lerp(u[1], Lerp(u[0], p00, p10), Lerp(u[0], p01, p11));
-                Normal3f n = Normal3f(Normalize(Cross(p10 - p00, p01 - p00)));
-
-                Interaction intr(p, n, ctx.time, u);
-
-                Vector3f wi = Normalize(p - ctx.p());
-                pdf *= DistanceSquared(ctx.p(), p) / (area * AbsDot(n, wi));
-
-                // MIS
-                pdf = 0.5f * pdf + 0.5f / SphericalQuadArea(v00, v10, v11, v01);
-                return ShapeSample{intr, pdf};
-            } else
-                u[0] = std::min(2.f * (u[0] - 0.5f), OneMinusEpsilon);
-            // and continue...
-        } else if (ctx.ns != Normal3f(0, 0, 0)) {
-            // Note: we either do MIS of image sampling + uniform spherical
-            // -or- warp product cosine spherical, just to keep things
-            // (somewhat) simple.
+        if (ctx.ns != Normal3f(0, 0, 0)) {
+            // Warp uniform sample _u_ to account for incident $\cos \theta$ factor
+            // Compute $\cos \theta$ weights for rectangle seen from _ctx.p()_
             Point3f rp = ctx.p();
             pstd::array<Float, 4> w = pstd::array<Float, 4>{
                 std::max<Float>(0.01, AbsDot(Normalize(p00 - rp), ctx.ns)),
@@ -1219,73 +1239,63 @@ pstd::optional<ShapeSample> BilinearPatch::Sample(const ShapeSampleContext &ctx,
             u = SampleBilinear(u, w);
             pdf *= BilinearPDF(u, w);
         }
-
+        // Sample spherical rectangle at reference point $\pt{}$
         Float quadPDF;
-        Point3f p = SampleSphericalQuad(ctx.p(), p00, p10 - p00, p01 - p00, u, &quadPDF);
+        Point3f p =
+            SampleSphericalRectangle(ctx.p(), p00, p10 - p00, p01 - p00, u, &quadPDF);
         pdf *= quadPDF;
+
+        // Compute surface normal and $(u,v)$ for sampled point on rectangle
         Normal3f n = Normal3f(Normalize(Cross(p10 - p00, p01 - p00)));
-        if (OrientationIsReversed() ^ TransformSwapsHandedness())
+        if (mesh->reverseOrientation ^ mesh->transformSwapsHandedness)
             n *= -1;
         Point2f uv(Dot(p - p00, p10 - p00) / DistanceSquared(p10, p00),
                    Dot(p - p00, p01 - p00) / DistanceSquared(p01, p00));
 
-        if (mesh->imageDistribution) {
-            Vector3f wi = Normalize(p - ctx.p());
-            Float imPDF = mesh->imageDistribution->PDF(uv);
-            imPDF *= DistanceSquared(ctx.p(), p) / (area * AbsDot(n, wi));
-            pdf = 0.5f * pdf + 0.5f * imPDF;
-        }
-
         return ShapeSample{Interaction(p, n, ctx.time, uv), pdf};
-    }
 
-    // From Shape::Sample().
-    pstd::optional<ShapeSample> ss = Sample(uo);
-    if (!ss)
-        return {};
-    ss->intr.time = ctx.time;
-    Vector3f wi = ss->intr.p() - ctx.p();
-
-    if (LengthSquared(wi) == 0)
-        return {};
-    else {
+    } else {
+        // Uniformly sample shape and compute incident direction _wi_
+        pstd::optional<ShapeSample> ss = Sample(u);
+        DCHECK(ss.has_value());
+        ss->intr.time = ctx.time;
+        Vector3f wi = ss->intr.p() - ctx.p();
+        if (LengthSquared(wi) == 0)
+            return {};
         wi = Normalize(wi);
-        // Convert from area measure, as returned by the Sample() call
-        // above, to solid angle measure.
-        ss->pdf *= DistanceSquared(ctx.p(), ss->intr.p()) / AbsDot(ss->intr.n, -wi);
+
+        // Convert uniform area sample PDF in _ss_ to solid angle measure
+        ss->pdf /= AbsDot(ss->intr.n, -wi) / DistanceSquared(ctx.p(), ss->intr.p());
         if (IsInf(ss->pdf))
             return {};
+
+        return ss;
     }
-    return ss;
 }
 
 Float BilinearPatch::PDF(const ShapeSampleContext &ctx, const Vector3f &wi) const {
-    // From Shape::PDF()
-    // Intersect sample ray with area light geometry
+    // Intersect sample ray with shape geometry
     Ray ray = ctx.SpawnRay(wi);
-    pstd::optional<ShapeIntersection> si = Intersect(ray);
-    if (!si)
+    pstd::optional<ShapeIntersection> isect = Intersect(ray);
+    if (!isect)
         return 0;
 
     // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
+    const BilinearPatchMesh *mesh = GetMesh();
     const int *v = &mesh->vertexIndices[4 * blpIndex];
     const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
     const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
 
-    Vector3f v00 = Normalize(p00 - ctx.p());
-    Vector3f v10 = Normalize(p10 - ctx.p());
-    Vector3f v01 = Normalize(p01 - ctx.p());
-    Vector3f v11 = Normalize(p11 - ctx.p());
+    // Find normalized vectors to corners of bilinear patch
+    Vector3f v00 = Normalize(p00 - ctx.p()), v10 = Normalize(p10 - ctx.p());
+    Vector3f v01 = Normalize(p01 - ctx.p()), v11 = Normalize(p11 - ctx.p());
 
-    if (IsQuad() && SphericalQuadArea(v00, v10, v11, v01) > MinSphericalSampleArea) {
-        Float pdf = 1 / SphericalQuadArea(v00, v10, v11, v01);  // note: arg ordering...
-
-        if (GetMesh()->imageDistribution) {
-            Float imPDF = PDF(si->intr) * DistanceSquared(ctx.p(), si->intr.p()) /
-                          AbsDot(si->intr.n, -wi);
-            return 0.5f * pdf + 0.5f * imPDF;
-        } else if (ctx.ns != Normal3f(0, 0, 0)) {
+    if (IsRectangle(mesh) && !mesh->imageDistribution &&
+        SphericalQuadArea(v00, v10, v11, v01) > MinSphericalSampleArea) {
+        // Return PDF for sample in spherical rectangle
+        Float pdf = 1 / SphericalQuadArea(v00, v10, v11, v01);
+        if (ctx.ns != Normal3f(0, 0, 0)) {
+            // Compute $\cos \theta$ weights for rectangle seen from _ctx.p()_
             Point3f rp = ctx.p();
             pstd::array<Float, 4> w = pstd::array<Float, 4>{
                 std::max<Float>(0.01, AbsDot(Normalize(p00 - rp), ctx.ns)),
@@ -1293,82 +1303,20 @@ Float BilinearPatch::PDF(const ShapeSampleContext &ctx, const Vector3f &wi) cons
                 std::max<Float>(0.01, AbsDot(Normalize(p01 - rp), ctx.ns)),
                 std::max<Float>(0.01, AbsDot(Normalize(p11 - rp), ctx.ns))};
 
-            Point2f u =
-                InvertSphericalQuadSample(rp, p00, p10 - p00, p01 - p00, si->intr.p());
+            Point2f u = InvertSphericalRectangleSample(rp, p00, p10 - p00, p01 - p00,
+                                                       isect->intr.p());
             return BilinearPDF(u, w) * pdf;
         } else
             return pdf;
+
     } else {
-        // Convert light sample weight to solid angle measure
-        Float pdf = PDF(si->intr) * DistanceSquared(ctx.p(), si->intr.p()) /
-                    AbsDot(si->intr.n, -wi);
+        // Return solid angle PDF for sampling bilinear patch at _intr_
+        Float pdf = PDF(isect->intr) / (AbsDot(isect->intr.n, -wi) /
+                                        DistanceSquared(ctx.p(), isect->intr.p()));
         if (IsInf(pdf))
-            pdf = 0.f;
+            pdf = 0;
         return pdf;
     }
-}
-
-pstd::optional<ShapeSample> BilinearPatch::Sample(const Point2f &uo) const {
-    // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[4 * blpIndex];
-    const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
-    const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
-
-    Point2f u = uo;
-    Float pdf = 1;
-    if (mesh->imageDistribution)
-        u = mesh->imageDistribution->Sample(u, &pdf);
-    else if (!IsQuad()) {
-        // Approximate uniform area
-        pstd::array<Float, 4> w = {
-            Length(Cross(p10 - p00, p01 - p00)), Length(Cross(p10 - p00, p11 - p10)),
-            Length(Cross(p01 - p00, p11 - p01)), Length(Cross(p11 - p10, p11 - p01))};
-        u = SampleBilinear(u, w);
-        pdf = BilinearPDF(u, w);
-    }
-
-    Point3f pu0 = Lerp(u[1], p00, p01), pu1 = Lerp(u[1], p10, p11);
-    Vector3f dpdu = pu1 - pu0;
-    Vector3f dpdv = Lerp(u[0], p01, p11) - Lerp(u[0], p00, p10);
-    if (LengthSquared(dpdu) == 0 || LengthSquared(dpdv) == 0)
-        return {};
-
-    Normal3f n = Normal3f(Normalize(Cross(dpdu, dpdv)));
-    if (OrientationIsReversed() ^ TransformSwapsHandedness())
-        n = -n;
-
-    // TODO: double check pError
-    Point3f p = Lerp(u[0], pu0, pu1);
-    Vector3f pError =
-        gamma(6) * Vector3f(Max(Max(Abs(p00), Abs(p10)), Max(Abs(p01), Abs(p11))));
-
-    return ShapeSample{Interaction(Point3fi(p, pError), n, u),
-                       pdf / Length(Cross(dpdu, dpdv))};
-}
-
-Float BilinearPatch::PDF(const Interaction &intr) const {
-    // Get bilinear patch vertices in _p00_, _p01_, _p10_, and _p11_
-    auto mesh = GetMesh();
-    const int *v = &mesh->vertexIndices[4 * blpIndex];
-    const Point3f &p00 = mesh->p[v[0]], &p10 = mesh->p[v[1]];
-    const Point3f &p01 = mesh->p[v[2]], &p11 = mesh->p[v[3]];
-
-    Float pdf = 1;
-    if (mesh->imageDistribution)
-        pdf = mesh->imageDistribution->PDF(intr.uv);
-    else if (!IsQuad()) {
-        pstd::array<Float, 4> w = {
-            Length(Cross(p10 - p00, p01 - p00)), Length(Cross(p10 - p00, p11 - p10)),
-            Length(Cross(p01 - p00, p11 - p01)), Length(Cross(p11 - p10, p11 - p01))};
-        pdf = BilinearPDF(intr.uv, w);
-    }
-
-    CHECK(!intr.uv.HasNaN());
-    Point3f pu0 = Lerp(intr.uv[1], p00, p01), pu1 = Lerp(intr.uv[1], p10, p11);
-    Vector3f dpdu = pu1 - pu0;
-    Vector3f dpdv = Lerp(intr.uv[0], p01, p11) - Lerp(intr.uv[0], p00, p10);
-    return pdf / Length(Cross(dpdu, dpdv));
 }
 
 std::string BilinearPatch::ToString() const {

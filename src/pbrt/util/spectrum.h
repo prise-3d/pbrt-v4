@@ -40,18 +40,18 @@ class BlackbodySpectrum;
 class ConstantSpectrum;
 class PiecewiseLinearSpectrum;
 class DenselySampledSpectrum;
-class RGBReflectanceSpectrum;
-class RGBSpectrum;
+class RGBAlbedoSpectrum;
+class RGBUnboundedSpectrum;
+class RGBIlluminantSpectrum;
 
 class SpectrumHandle : public TaggedPointer<ConstantSpectrum, DenselySampledSpectrum,
-                                            PiecewiseLinearSpectrum, RGBSpectrum,
-                                            RGBReflectanceSpectrum, BlackbodySpectrum> {
+                                            PiecewiseLinearSpectrum, RGBAlbedoSpectrum,
+                                            RGBUnboundedSpectrum, RGBIlluminantSpectrum,
+                                            BlackbodySpectrum> {
   public:
     // SpectrumHandle Public Methods
     using TaggedPointer::TaggedPointer;
     std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
 
     PBRT_CPU_GPU
     Float operator()(Float lambda) const;
@@ -64,10 +64,6 @@ class SpectrumHandle : public TaggedPointer<ConstantSpectrum, DenselySampledSpec
 };
 
 // Spectrum Function Declarations
-Float SpectrumToY(SpectrumHandle s);
-Float SpectrumToPhotometric(SpectrumHandle s);
-XYZ SpectrumToXYZ(SpectrumHandle s);
-
 PBRT_CPU_GPU inline Float Blackbody(Float lambda, Float T) {
     if (T <= 0)
         return 0;
@@ -76,7 +72,7 @@ PBRT_CPU_GPU inline Float Blackbody(Float lambda, Float T) {
     const Float kb = 1.3806488e-23;
     // Return emitted radiance for blackbody at wavelength _lambda[i]_
     Float l = lambda * 1e-9f;
-    Float Le = (2 * h * c * c) / (Pow<5>(l) * (std::exp((h * c) / (l * kb * T)) - 1));
+    Float Le = (2 * h * c * c) / (Pow<5>(l) * (FastExp((h * c) / (l * kb * T)) - 1));
     CHECK(!IsNaN(Le));
     return Le;
 }
@@ -85,6 +81,9 @@ namespace Spectra {
 DenselySampledSpectrum D(Float temperature, Allocator alloc);
 }  // namespace Spectra
 Float SpectrumToPhotometric(SpectrumHandle s);
+
+Float SpectrumToPhotometric(SpectrumHandle s);
+XYZ SpectrumToXYZ(SpectrumHandle s);
 
 // SampledSpectrum Definition
 class SampledSpectrum {
@@ -360,8 +359,6 @@ class ConstantSpectrum {
     Float MaxValue() const { return c; }
 
     std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
 
     ConstantSpectrum(Float c) : c(c) {}
 
@@ -401,8 +398,6 @@ class DenselySampledSpectrum {
     Float MaxValue() const { return *std::max_element(values.begin(), values.end()); }
 
     std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
 
     DenselySampledSpectrum(SpectrumHandle spec, int lambda_min = Lambda_min,
                            int lambda_max = Lambda_max, Allocator alloc = {})
@@ -465,8 +460,6 @@ class PiecewiseLinearSpectrum {
     Float operator()(Float lambda) const;
 
     std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
 
     PiecewiseLinearSpectrum(pstd::span<const Float> lambdas,
                             pstd::span<const Float> values, Allocator alloc = {});
@@ -475,97 +468,11 @@ class PiecewiseLinearSpectrum {
                                                Allocator alloc);
 
     static PiecewiseLinearSpectrum *FromInterleaved(pstd::span<const Float> samples,
-                                                    bool normalize, Allocator alloc) {
-        CHECK_EQ(0, samples.size() % 2);
-        int n = samples.size() / 2;
-        std::vector<Float> lambda(n), v(n);
-        for (size_t i = 0; i < n; ++i) {
-            lambda[i] = samples[2 * i];
-            v[i] = samples[2 * i + 1];
-            if (i > 0)
-                CHECK_GT(lambda[i], lambda[i - 1]);
-        }
-
-        PiecewiseLinearSpectrum *spec =
-            alloc.new_object<pbrt::PiecewiseLinearSpectrum>(lambda, v, alloc);
-
-        if (normalize)
-            // Normalize to have luminance of 1.
-            spec->Scale(1 / SpectrumToY(spec));
-
-        return spec;
-    }
+                                                    bool normalize, Allocator alloc);
 
   private:
     // PiecewiseLinearSpectrum Private Members
     pstd::vector<Float> lambdas, values;
-};
-
-class RGBReflectanceSpectrum {
-  public:
-    // RGBReflectanceSpectrum Public Methods
-    PBRT_CPU_GPU
-    Float operator()(Float lambda) const { return scale * rsp(lambda); }
-    PBRT_CPU_GPU
-    Float MaxValue() const { return scale * rsp.MaxValue(); }
-
-    PBRT_CPU_GPU
-    RGBReflectanceSpectrum(const RGBColorSpace &cs, const RGB &rgb);
-
-    PBRT_CPU_GPU
-    SampledSpectrum Sample(const SampledWavelengths &lambda) const {
-        SampledSpectrum s;
-        for (int i = 0; i < NSpectrumSamples; ++i)
-            s[i] = scale * rsp(lambda[i]);
-        return s;
-    }
-
-    std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
-
-  private:
-    // RGBReflectanceSpectrum Private Members
-    Float scale = 1;
-    RGB rgb;
-    RGBSigmoidPolynomial rsp;
-};
-
-class RGBSpectrum {
-  public:
-    // RGBSpectrum Public Methods
-    RGBSpectrum() = default;
-    PBRT_CPU_GPU
-    RGBSpectrum(const RGBColorSpace &cs, const RGB &rgb);
-
-    PBRT_CPU_GPU
-    Float operator()(Float lambda) const {
-        return scale * rsp(lambda) * (*illuminant)(lambda);
-    }
-    PBRT_CPU_GPU
-    Float MaxValue() const { return scale * rsp.MaxValue() * illuminant->MaxValue(); }
-
-    PBRT_CPU_GPU
-    const DenselySampledSpectrum *Illluminant() const { return illuminant; }
-
-    PBRT_CPU_GPU
-    SampledSpectrum Sample(const SampledWavelengths &lambda) const {
-        SampledSpectrum s;
-        for (int i = 0; i < NSpectrumSamples; ++i)
-            s[i] = scale * rsp(lambda[i]);
-        return s * illuminant->Sample(lambda);
-    }
-
-    std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
-
-  private:
-    // RGBSpectrum Private Members
-    RGB rgb;
-    Float scale;
-    RGBSigmoidPolynomial rsp;
-    const DenselySampledSpectrum *illuminant;
 };
 
 class BlackbodySpectrum {
@@ -595,13 +502,101 @@ class BlackbodySpectrum {
     Float MaxValue() const { return 1.f; }
 
     std::string ToString() const;
-    std::string ParameterType() const;
-    std::string ParameterString() const;
 
   private:
     // BlackbodySpectrum Private Members
     Float T;
     Float normalizationFactor;
+};
+
+class RGBAlbedoSpectrum {
+  public:
+    // RGBAlbedoSpectrum Public Methods
+    PBRT_CPU_GPU
+    Float operator()(Float lambda) const { return rsp(lambda); }
+    PBRT_CPU_GPU
+    Float MaxValue() const { return rsp.MaxValue(); }
+
+    PBRT_CPU_GPU
+    RGBAlbedoSpectrum(const RGBColorSpace &cs, const RGB &rgb);
+
+    PBRT_CPU_GPU
+    SampledSpectrum Sample(const SampledWavelengths &lambda) const {
+        SampledSpectrum s;
+        for (int i = 0; i < NSpectrumSamples; ++i)
+            s[i] = rsp(lambda[i]);
+        return s;
+    }
+
+    std::string ToString() const;
+
+  private:
+    // RGBAlbedoSpectrum Private Members
+    RGBSigmoidPolynomial rsp;
+};
+
+class RGBUnboundedSpectrum {
+  public:
+    // RGBUnboundedSpectrum Public Methods
+    PBRT_CPU_GPU
+    Float operator()(Float lambda) const { return scale * rsp(lambda); }
+    PBRT_CPU_GPU
+    Float MaxValue() const { return scale * rsp.MaxValue(); }
+
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum(const RGBColorSpace &cs, const RGB &rgb);
+
+    PBRT_CPU_GPU
+    RGBUnboundedSpectrum() : rsp(0, 0, 0), scale(0) {}
+
+    PBRT_CPU_GPU
+    SampledSpectrum Sample(const SampledWavelengths &lambda) const {
+        SampledSpectrum s;
+        for (int i = 0; i < NSpectrumSamples; ++i)
+            s[i] = scale * rsp(lambda[i]);
+        return s;
+    }
+
+    std::string ToString() const;
+
+  private:
+    // RGBUnboundedSpectrum Private Members
+    Float scale = 1;
+    RGBSigmoidPolynomial rsp;
+};
+
+class RGBIlluminantSpectrum {
+  public:
+    // RGBIlluminantSpectrum Public Methods
+    RGBIlluminantSpectrum() = default;
+    PBRT_CPU_GPU
+    RGBIlluminantSpectrum(const RGBColorSpace &cs, const RGB &rgb);
+
+    PBRT_CPU_GPU
+    Float operator()(Float lambda) const {
+        return scale * rsp(lambda) * (*illuminant)(lambda);
+    }
+    PBRT_CPU_GPU
+    Float MaxValue() const { return scale * rsp.MaxValue() * illuminant->MaxValue(); }
+
+    PBRT_CPU_GPU
+    const DenselySampledSpectrum *Illluminant() const { return illuminant; }
+
+    PBRT_CPU_GPU
+    SampledSpectrum Sample(const SampledWavelengths &lambda) const {
+        SampledSpectrum s;
+        for (int i = 0; i < NSpectrumSamples; ++i)
+            s[i] = scale * rsp(lambda[i]);
+        return s * illuminant->Sample(lambda);
+    }
+
+    std::string ToString() const;
+
+  private:
+    // RGBIlluminantSpectrum Private Members
+    Float scale;
+    RGBSigmoidPolynomial rsp;
+    const DenselySampledSpectrum *illuminant;
 };
 
 // SampledSpectrum Inline Functions
@@ -738,6 +733,14 @@ inline const DenselySampledSpectrum &X();
 inline const DenselySampledSpectrum &Y();
 inline const DenselySampledSpectrum &Z();
 }  // namespace Spectra
+
+// Spectrum Inline Functions
+inline Float InnerProduct(SpectrumHandle a, SpectrumHandle b) {
+    Float result = 0;
+    for (Float lambda = Lambda_min; lambda <= Lambda_max; ++lambda)
+        result += a(lambda) * b(lambda);
+    return result / CIE_Y_integral;
+}
 
 // SpectrumHandle Inline Method Definitions
 inline Float SpectrumHandle::operator()(Float lambda) const {

@@ -56,6 +56,7 @@ constexpr Float Sqrt2 = 1.41421356237309504880;
 template <typename Float>
 class CompensatedSum {
   public:
+    // CompensatedSum Public Methods
     CompensatedSum() = default;
     PBRT_CPU_GPU
     explicit CompensatedSum(Float v) : sum(v) {}
@@ -82,23 +83,22 @@ class CompensatedSum {
     std::string ToString() const;
 
   private:
-    Float sum = 0., c = 0.;
+    Float sum = 0, c = 0;
 };
 
 // CompensatedFloat Definition
 struct CompensatedFloat {
   public:
+    // CompensatedFloat Public Methods
     PBRT_CPU_GPU
-    CompensatedFloat(Float v, Float err) : v(v), err(err) {}
-
+    CompensatedFloat(Float v, Float err = 0) : v(v), err(err) {}
     PBRT_CPU_GPU
     explicit operator float() const { return v + err; }
     PBRT_CPU_GPU
     explicit operator double() const { return double(v) + double(err); }
+    std::string ToString() const;
 
     Float v, err;
-
-    std::string ToString() const;
 };
 
 template <int N>
@@ -118,8 +118,13 @@ inline Float SinXOverX(Float x) {
     return std::sin(x) / x;
 }
 
-PBRT_CPU_GPU
-inline Float Sinc(Float x) {
+template <typename T>
+inline PBRT_CPU_GPU typename std::enable_if_t<std::is_integral<T>::value, T> FMA(T a, T b,
+                                                                                 T c) {
+    return a * b + c;
+}
+
+PBRT_CPU_GPU inline Float Sinc(Float x) {
     return SinXOverX(Pi * x);
 }
 
@@ -127,8 +132,7 @@ PBRT_CPU_GPU
 inline Float WindowedSinc(Float x, Float radius, Float tau) {
     if (std::abs(x) > radius)
         return 0;
-    Float lanczos = Sinc(x / tau);
-    return Sinc(x) * lanczos;
+    return Sinc(x) * Sinc(x / tau);
 }
 
 #ifdef PBRT_IS_MSVC
@@ -162,42 +166,28 @@ PBRT_CPU_GPU inline Float Mod(Float a, Float b) {
 }
 
 // (0,0): v[0], (1, 0): v[1], (0, 1): v[2], (1, 1): v[3]
-PBRT_CPU_GPU
-inline Float Bilerp(pstd::array<Float, 2> p, pstd::span<const Float> v) {
+PBRT_CPU_GPU inline Float Bilerp(pstd::array<Float, 2> p, pstd::span<const Float> v) {
     return ((1 - p[0]) * (1 - p[1]) * v[0] + p[0] * (1 - p[1]) * v[1] +
             (1 - p[0]) * p[1] * v[2] + p[0] * p[1] * v[3]);
 }
 
-PBRT_CPU_GPU
-inline Float Radians(Float deg) {
+PBRT_CPU_GPU inline Float Radians(Float deg) {
     return (Pi / 180) * deg;
 }
-PBRT_CPU_GPU
-inline Float Degrees(Float rad) {
+PBRT_CPU_GPU inline Float Degrees(Float rad) {
     return (180 / Pi) * rad;
 }
 
 PBRT_CPU_GPU
-inline float FMA(float a, float b, float c) {
-    return std::fma(a, b, c);
+inline Float SmoothStep(Float x, Float a, Float b) {
+    if (a == b)
+        return (x < a) ? 0 : 1;
+    DCHECK_LT(a, b);
+    Float t = Clamp((x - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
 }
 
-PBRT_CPU_GPU
-inline double FMA(double a, double b, double c) {
-    return std::fma(a, b, c);
-}
-inline long double FMA(long double a, long double b, long double c) {
-    return std::fma(a, b, c);
-}
-// Needed so can use e.g. EvaluatePolynomial() with ints
-template <typename T>
-PBRT_CPU_GPU inline typename std::enable_if_t<std::is_integral<T>::value, T> FMA(T a, T b,
-                                                                                 T c) {
-    return a * b + c;
-}
-
-PBRT_CPU_GPU
-inline float SafeSqrt(float x) {
+PBRT_CPU_GPU inline float SafeSqrt(float x) {
     DCHECK_GE(x, -1e-3f);  // not too negative
     return std::sqrt(std::max(0.f, x));
 }
@@ -217,7 +207,8 @@ PBRT_CPU_GPU inline constexpr T Sqr(T v) {
 // https://stackoverflow.com/questions/5101516/why-function-template-cannot-be-partially-specialized
 template <int n>
 PBRT_CPU_GPU inline constexpr float Pow(float v) {
-    static_assert(n > 0, "Power can't be negative");
+    if constexpr (n < 0)
+        return 1 / Pow<-n>(v);
     float n2 = Pow<n / 2>(v);
     return n2 * n2 * Pow<n & 1>(v);
 }
@@ -226,7 +217,6 @@ template <>
 PBRT_CPU_GPU inline constexpr float Pow<1>(float v) {
     return v;
 }
-
 template <>
 PBRT_CPU_GPU inline constexpr float Pow<0>(float v) {
     return 1;
@@ -256,9 +246,13 @@ PBRT_CPU_GPU inline constexpr Float EvaluatePolynomial(Float t, C c) {
 
 template <typename Float, typename C, typename... Args>
 PBRT_CPU_GPU inline constexpr Float EvaluatePolynomial(Float t, C c, Args... cRemaining) {
-    using FMAT = typename std::common_type<Float, C>::type;
-    return FMA(FMAT(t), FMAT(EvaluatePolynomial(t, cRemaining...)), FMAT(c));
+    return FMA(t, EvaluatePolynomial(t, cRemaining...), c);
 }
+
+PBRT_CPU_GPU
+inline Float ApproxSin(Float x);
+PBRT_CPU_GPU
+inline Float ApproxCos(Float x);
 
 PBRT_CPU_GPU
 inline Float ApproxSin(Float x) {
@@ -398,10 +392,9 @@ inline int Log2Int(int64_t v) {
     return Log2Int((uint64_t)v);
 }
 
-// log4(x) = log2(x) / log2(4) = 1/2 log2(x) = log2(x) >> 1
 template <typename T>
 PBRT_CPU_GPU inline int Log4Int(T v) {
-    return Log2Int(v) >> 1;
+    return Log2Int(v) / 2;
 }
 
 // https://stackoverflow.com/a/10792321
@@ -410,73 +403,52 @@ inline float FastExp(float x) {
 #ifdef PBRT_IS_GPU_CODE
     return __expf(x);
 #else
-    /* exp(x) = 2^i * 2^f; i = floor (log2(e) * x), 0 <= f <= 1 */
-    float t = x * 1.442695041f;
-    float fi = std::floor(t);
-    float f = t - fi;
-    int i = (int)fi;
+    // Compute $x'$ such that $\roman{e}^x = 2^{x'}$
+    float xp = x * 1.442695041f;
 
-    // TODO: figure out what these should be.
-    if (i < -30)
+    // Find integer and fractional components of $x'$
+    float fxp = std::floor(xp), f = xp - fxp;
+    int i = (int)fxp;
+
+    // Evaluate polynomial approximation of $2^f$
+    float twoToF = EvaluatePolynomial(f, 1.f, 0.695556856f, 0.226173572f, 0.0781455737f);
+
+    // Scale $2^f$ by $2^i$ and return final result
+    int exponent = Exponent(twoToF) + i;
+    if (exponent < -126)
         return 0;
-    if (i > 30)
+    if (exponent > 127)
         return Infinity;
-
-    // built-in exp on OSX is about 69ms, so 1.55x speedup.
-    // approximations to 2^f over [0,1]...
-
-    // quadratic:
-    // quadratic, from stack exchange: max error: 0.001725, 40.3ms
-    // float twoToF = EvaluatePolynomial(f, 1.00172476f, 0.657636276f,
-    // 0.3371894346f);
-
-    // mathematica quadratic polynomial via Fit: max error: 0.003699, 40.3ms
-    // float twoToF = EvaluatePolynomial(f, 1.00375f, 0.649445f, 0.342662f);
-
-    // mathematica quadratic polynomial via FindFit, Linfinity norm
-    // max error: 0.002431, 40.5ms
-    // float twoToF = EvaluatePolynomial(f, 1.00248f, 0.651047f, 0.344001f);
-
-    // cubic polynomial via Fit: max error: 0.000183, 44.5ms
-    float twoToF = EvaluatePolynomial(f, 0.999813f, 0.696834f, 0.224131f, 0.0790209f);
-
-    // mathematcia rational polynomial via FindFit: max err 0.00059, 47.291ms
-    // float twoToF = EvaluatePolynomial(f, 0.263371f, 0.128038f, 0.0268998f) /
-    //(0.263355f - 0.0542072f * f);
-
-    // scale by 2^i, including the case of i being negative....
     uint32_t bits = FloatToBits(twoToF);
-    bits += (i << 23);
+    bits &= 0b10000000011111111111111111111111u;
+    bits |= (exponent + 127) << 23;
     return BitsToFloat(bits);
+
 #endif
 }
 
-PBRT_CPU_GPU
-inline Float Gaussian(Float x, Float mu = 0, Float sigma = 1) {
+PBRT_CPU_GPU inline Float Gaussian(Float x, Float mu = 0, Float sigma = 1) {
     return 1 / std::sqrt(2 * Pi * sigma * sigma) *
            FastExp(-Sqr(x - mu) / (2 * sigma * sigma));
 }
 
-PBRT_CPU_GPU
-inline Float GaussianIntegral(Float x0, Float x1, Float mu = 0, Float sigma = 1) {
+PBRT_CPU_GPU inline Float GaussianIntegral(Float x0, Float x1, Float mu = 0,
+                                           Float sigma = 1) {
     DCHECK_GT(sigma, 0);
     Float sigmaRoot2 = sigma * Float(1.414213562373095);
     return 0.5f * (std::erf((mu - x0) / sigmaRoot2) - std::erf((mu - x1) / sigmaRoot2));
 }
 
-PBRT_CPU_GPU
-inline Float Logistic(Float x, Float s) {
+PBRT_CPU_GPU inline Float Logistic(Float x, Float s) {
     x = std::abs(x);
     return std::exp(-x / s) / (s * Sqr(1 + std::exp(-x / s)));
 }
 
-PBRT_CPU_GPU
-inline Float LogisticCDF(Float x, Float s) {
+PBRT_CPU_GPU inline Float LogisticCDF(Float x, Float s) {
     return 1 / (1 + std::exp(-x / s));
 }
 
-PBRT_CPU_GPU
-inline Float TrimmedLogistic(Float x, Float s, Float a, Float b) {
+PBRT_CPU_GPU inline Float TrimmedLogistic(Float x, Float s, Float a, Float b) {
     DCHECK_LT(a, b);
     return Logistic(x, s) / (LogisticCDF(b, s) - LogisticCDF(a, s));
 }
@@ -488,38 +460,18 @@ inline Float I0(Float x);
 PBRT_CPU_GPU
 inline Float LogI0(Float x);
 
-/**
- * \brief Find an interval in an ordered set
- *
- * This function is very similar to \c std::upper_bound, but it uses a functor
- * rather than an actual array to permit working with procedurally defined
- * data. It returns the index \c i such that pred(i) is \c true and pred(i+1)
- * is \c false. See below for special cases.
- *
- * This function is primarily used to locate an interval (i, i+1) for linear
- * interpolation, hence its name. To avoid issues out of bounds accesses, and
- * to deal with predicates that evaluate to \c true or \c false on the entire
- * domain, the returned left interval index is clamped to the range <tt>[left,
- * right-2]</tt>.
- * In particular:
- * If there is no index such that pred(i) is true, we return (left).
- * If there is no index such that pred(i+1) is false, we return (right-2).
- */
 template <typename Predicate>
-PBRT_CPU_GPU inline size_t FindInterval(size_t size_, const Predicate &pred) {
-    using ssize_t = std::make_signed_t<size_t>;  // Not all platforms have ssize_t
-    ssize_t size = (ssize_t)size_ - 2, first = 1;
-
+PBRT_CPU_GPU inline size_t FindInterval(size_t sz, const Predicate &pred) {
+    using ssize_t = std::make_signed_t<size_t>;
+    ssize_t size = (ssize_t)sz - 2, first = 1;
     while (size > 0) {
+        // Evaluate predicate at midpoint and update _first_ and _size_
         size_t half = (size_t)size >> 1, middle = first + half;
-
-        // .. and recurse into the left or right side
         bool predResult = pred(middle);
         first = predResult ? middle + 1 : first;
         size = predResult ? size - (half + 1) : half;
     }
-
-    return (size_t)Clamp((ssize_t)first - 1, 0, size_ - 2);
+    return (size_t)Clamp((ssize_t)first - 1, 0, sz - 2);
 }
 
 template <typename T>
@@ -532,8 +484,7 @@ PBRT_CPU_GPU inline bool IsPowerOf4(T v) {
     return v == 1 << (2 * Log4Int(v));
 }
 
-PBRT_CPU_GPU
-inline constexpr int32_t RoundUpPow2(int32_t v) {
+PBRT_CPU_GPU inline constexpr int32_t RoundUpPow2(int32_t v) {
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -560,45 +511,34 @@ PBRT_CPU_GPU inline T RoundUpPow4(T v) {
     return IsPowerOf4(v) ? v : (1 << (2 * (1 + Log4Int(v))));
 }
 
-template <typename Float>
 PBRT_CPU_GPU inline CompensatedFloat TwoProd(Float a, Float b) {
     Float ab = a * b;
     return {ab, FMA(a, b, -ab)};
 }
 
-template <typename Float>
 PBRT_CPU_GPU inline CompensatedFloat TwoSum(Float a, Float b) {
-    Float s = a + b;
-    Float ap = s - b;
-    Float bp = s - ap;
-    Float da = a - ap;
-    Float db = b - bp;
-    return {s, da + db};
+    Float s = a + b, delta = s - a;
+    return {s, (a - (s - delta)) + (b - delta)};
 }
 
-// Returns ab-cd with <1.5 ulps of error
-// Claude-Pierre Jeannerod, Nicolas Louvet, and Jean-Michel Muller,
-//  "Further Analysis of Kahan's Algorithm for the Accurate Computation
-//  of 2x2 Determinants". Mathematics of Computation, Vol. 82, No. 284,
-//  Oct. 2013, pp. 2245-2264
 template <typename Ta, typename Tb, typename Tc, typename Td>
 PBRT_CPU_GPU inline auto DifferenceOfProducts(Ta a, Tb b, Tc c, Td d) {
     auto cd = c * d;
-    auto err = FMA(-c, d, cd);  // Error (exact)
-    auto dop = FMA(a, b, -cd);
-    return dop + err;
+    auto differenceOfProducts = FMA(a, b, -cd);
+    auto error = FMA(-c, d, cd);
+    return differenceOfProducts + error;
 }
 
 template <typename Ta, typename Tb, typename Tc, typename Td>
 PBRT_CPU_GPU inline auto SumOfProducts(Ta a, Tb b, Tc c, Td d) {
     auto cd = c * d;
-    auto err = FMA(c, d, -cd);  // Error (exact)
-    auto sop = FMA(a, b, cd);
-    return sop + err;
+    auto sumOfProducts = FMA(a, b, cd);
+    auto error = FMA(c, d, -cd);
+    return sumOfProducts + error;
 }
 
 namespace internal {
-
+// InnerProduct Helper Functions
 template <typename Float>
 PBRT_CPU_GPU inline CompensatedFloat InnerProduct(Float a, Float b) {
     return TwoProd(a, b);
@@ -609,10 +549,6 @@ PBRT_CPU_GPU inline CompensatedFloat InnerProduct(Float a, Float b) {
 //
 // Accurate summation, dot product and polynomial evaluation in complex
 // floating point arithmetic, Graillat and Menissier-Morain.
-//
-// Precision same as if in working with doubles. Unfortunately is about
-// 4.6x slower than plain old float dot product. Going to doubles is just
-// ~2x slower...
 template <typename Float, typename... T>
 PBRT_CPU_GPU inline CompensatedFloat InnerProduct(Float a, Float b, T... terms) {
     CompensatedFloat ab = TwoProd(a, b);
@@ -624,13 +560,20 @@ PBRT_CPU_GPU inline CompensatedFloat InnerProduct(Float a, Float b, T... terms) 
 }  // namespace internal
 
 template <typename... T>
-PBRT_CPU_GPU inline Float InnerProduct(T... terms) {
+PBRT_CPU_GPU inline std::enable_if_t<std::conjunction_v<std::is_arithmetic<T>...>, Float>
+InnerProduct(T... terms) {
     CompensatedFloat ip = internal::InnerProduct(terms...);
     return Float(ip);
 }
 
 PBRT_CPU_GPU
 inline bool Quadratic(float a, float b, float c, float *t0, float *t1) {
+    // Handle case of $a=0$ for quadratic solution
+    if (a == 0) {
+        *t0 = *t1 = -c / b;
+        return true;
+    }
+
     // Find quadratic discriminant
     float discrim = DifferenceOfProducts(b, b, 4 * a, c);
     if (discrim < 0)
@@ -643,6 +586,7 @@ inline bool Quadratic(float a, float b, float c, float *t0, float *t1) {
     *t1 = c / q;
     if (*t0 > *t1)
         pstd::swap(*t0, *t1);
+
     return true;
 }
 
@@ -654,6 +598,11 @@ inline bool Quadratic(double a, double b, double c, double *t0, double *t1) {
         return false;
     double rootDiscrim = std::sqrt(discrim);
 
+    if (a == 0) {
+        *t0 = *t1 = -c / b;
+        return true;
+    }
+
     // Compute quadratic _t_ values
     double q = -0.5 * (b + std::copysign(rootDiscrim, b));
     *t0 = q / a;
@@ -663,12 +612,10 @@ inline bool Quadratic(double a, double b, double c, double *t0, double *t1) {
     return true;
 }
 
-// Solve f[x] == 0 over [x0, x1]. f should return a std::pair<FloatType,
-// FloatType>[f(x), f'(x)]. Only enabled for float and double.
-template <typename FloatType, typename Func>
-PBRT_CPU_GPU inline FloatType NewtonBisection(
-    FloatType x0, FloatType x1, Func f, Float xEps = 1e-6f, Float fEps = 1e-6f,
-    typename std::enable_if_t<std::is_floating_point<FloatType>::value> * = nullptr) {
+template <typename Func>
+PBRT_CPU_GPU inline Float NewtonBisection(Float x0, Float x1, Func f, Float xEps = 1e-6f,
+                                          Float fEps = 1e-6f) {
+    // Check function endpoints for roots
     DCHECK_LT(x0, x1);
     Float fx0 = f(x0).first, fx1 = f(x1).first;
     if (std::abs(fx0) < fEps)
@@ -676,53 +623,91 @@ PBRT_CPU_GPU inline FloatType NewtonBisection(
     if (std::abs(fx1) < fEps)
         return x1;
     bool startIsNegative = fx0 < 0;
-    // Implicit line equation: (y-y0)/(y1-y0) = (x-x0)/(x1-x0).
-    // Solve for y = 0 to find x for starting point.
-    FloatType xMid = x0 + (x1 - x0) * -fx0 / (fx1 - fx0);
+
+    // Set initial midpoint using linear approximation of _f_
+    Float xMid = x0 + (x1 - x0) * -fx0 / (fx1 - fx0);
 
     while (true) {
+        // Fall back to bisection if _xMid_ is out of bounds
         if (!(x0 < xMid && xMid < x1))
-            // Fall back to bisection.
             xMid = (x0 + x1) / 2;
 
-        std::pair<FloatType, FloatType> fxMid = f(xMid);
+        // Evaluate function and narrow bracket range _[x0, x1]_
+        std::pair<Float, Float> fxMid = f(xMid);
         DCHECK(!IsNaN(fxMid.first));
-
-        if (startIsNegative == fxMid.first < 0)
+        if (startIsNegative == (fxMid.first < 0))
             x0 = xMid;
         else
             x1 = xMid;
 
+        // Stop the iteration if converged
         if ((x1 - x0) < xEps || std::abs(fxMid.first) < fEps)
             return xMid;
 
-        // Try a Newton step.
+        // Perform a Newton step
         xMid -= fxMid.first / fxMid.second;
     }
 }
 
-// If an integral type is used for x0 and x1, assume Float.
-template <typename NotFloatType, typename Func>
-PBRT_CPU_GPU inline Float NewtonBisection(
-    NotFloatType x0, NotFloatType x1, Func f, Float xEps = 1e-6f, Float fEps = 1e-6f,
-    typename std::enable_if_t<std::is_integral<NotFloatType>::value> * = nullptr) {
-    return NewtonBisection(Float(x0), Float(x1), f, xEps, fEps);
-}
+template <int N>
+pstd::optional<SquareMatrix<N>> LinearLeastSquares(const Float A[][N], const Float B[][N],
+                                                   int rows);
 
-PBRT_CPU_GPU
-inline Float SmoothStep(Float x, Float a, Float b) {
-    if (a == b)
-        return (x < a) ? 0 : 1;
-    DCHECK_LT(a, b);
-    Float t = Clamp((x - a) / (b - a), 0, 1);
-    return t * t * (3 - 2 * t);
+template <int N>
+pstd::optional<SquareMatrix<N>> LinearLeastSquares(const Float A[][N], const Float B[][N],
+                                                   int rows) {
+    SquareMatrix<N> AtA = SquareMatrix<N>::Zero();
+    SquareMatrix<N> AtB = SquareMatrix<N>::Zero();
+
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j)
+            for (int r = 0; r < rows; ++r) {
+                AtA[i][j] += A[r][i] * A[r][j];
+                AtB[i][j] += A[r][i] * B[r][j];
+            }
+
+    auto AtAi = Inverse(AtA);
+    if (!AtAi)
+        return {};
+    return Transpose(*AtAi * AtB);
 }
 
 // Math Function Declarations
 int NextPrime(int x);
 
-pstd::optional<SquareMatrix<3>> LinearLeastSquares(const Float A[][3], const Float B[][3],
-                                                   int rows);
+// Permutation Inline Function Declarations
+PBRT_CPU_GPU inline int PermutationElement(uint32_t i, uint32_t n, uint32_t seed);
+
+PBRT_CPU_GPU
+inline int PermutationElement(uint32_t i, uint32_t l, uint32_t p) {
+    uint32_t w = l - 1;
+    w |= w >> 1;
+    w |= w >> 2;
+    w |= w >> 4;
+    w |= w >> 8;
+    w |= w >> 16;
+    do {
+        i ^= p;
+        i *= 0xe170893d;
+        i ^= p >> 16;
+        i ^= (i & w) >> 4;
+        i ^= p >> 8;
+        i *= 0x0929eb3f;
+        i ^= p >> 23;
+        i ^= (i & w) >> 1;
+        i *= 1 | p >> 27;
+        i *= 0x6935fa69;
+        i ^= (i & w) >> 11;
+        i *= 0x74dcb303;
+        i ^= (i & w) >> 2;
+        i *= 0x9e501cc3;
+        i ^= (i & w) >> 2;
+        i *= 0xc860a3df;
+        i &= w;
+        i ^= i >> 5;
+    } while (i >= l);
+    return (i + p) % l;
+}
 
 PBRT_CPU_GPU
 inline Float ErfInv(Float a) {
@@ -785,20 +770,14 @@ inline Float LogI0(Float x) {
 }
 
 // Interval Definition
-template <typename Float>
 class Interval {
   public:
     // Interval Public Methods
     Interval() = default;
     PBRT_CPU_GPU
-    constexpr Interval(Float low, Float high)
+    explicit Interval(Float v) : low(v), high(v) {}
+    PBRT_CPU_GPU constexpr Interval(Float low, Float high)
         : low(std::min(low, high)), high(std::max(low, high)) {}
-
-    PBRT_CPU_GPU
-    Interval &operator=(Float v) {
-        low = high = v;
-        return *this;
-    }
 
     PBRT_CPU_GPU
     static Interval FromValueAndError(Float v, Float err) {
@@ -806,15 +785,16 @@ class Interval {
         if (err == 0)
             i.low = i.high = v;
         else {
-            // Compute conservative bounds by rounding the endpoints away
-            // from the middle. Note that this will be over-conservative in
-            // cases where v-err or v+err are exactly representable in
-            // floating-point, but it's probably not worth the trouble of
-            // checking this case.
-            i.low = NextFloatDown(v - err);
-            i.high = NextFloatUp(v + err);
+            i.low = SubRoundDown(v, err);
+            i.high = AddRoundUp(v, err);
         }
         return i;
+    }
+
+    PBRT_CPU_GPU
+    Interval &operator=(Float v) {
+        low = high = v;
+        return *this;
     }
 
     PBRT_CPU_GPU
@@ -833,31 +813,10 @@ class Interval {
     }
 
     PBRT_CPU_GPU
-    explicit Interval(Float v) : low(v), high(v) {}
-
-    PBRT_CPU_GPU
     explicit operator Float() const { return Midpoint(); }
 
     PBRT_CPU_GPU
     bool Exactly(Float v) const { return low == v && high == v; }
-
-    template <typename T>
-    PBRT_CPU_GPU explicit Interval(const Interval<T> &i) {
-        *this = i;
-    }
-
-    template <typename T>
-    PBRT_CPU_GPU Interval &operator=(const Interval<T> &i) {
-        low = i.LowerBound();
-        high = i.UpperBound();
-        if (sizeof(T) > sizeof(Float)) {
-            // Assume that if Float is bigger than T, then it's more
-            // precise, which seems not unreasonable...
-            low = NextFloatDown(low);
-            high = NextFloatUp(high);
-        }
-        return *this;
-    }
 
     PBRT_CPU_GPU
     bool operator==(Float v) const { return Exactly(v); }
@@ -865,72 +824,30 @@ class Interval {
     PBRT_CPU_GPU
     Interval operator-() const { return {-high, -low}; }
 
-    template <typename F>
-    PBRT_CPU_GPU auto operator+(Interval<F> i) const
-        -> Interval<decltype(Float() + F())> {
-        using FR = decltype(Float() + F());
-        if (Exactly(0))
-            return Interval<FR>(i);
-        else if (i.Exactly(0))
-            return Interval<FR>(*this);
-
-        return Interval<FR>(NextFloatDown(LowerBound() + i.LowerBound()),
-                            NextFloatUp(UpperBound() + i.UpperBound()));
+    PBRT_CPU_GPU
+    Interval operator+(Interval i) const {
+        return {AddRoundDown(low, i.low), AddRoundUp(high, i.high)};
     }
 
-    template <typename F>
-    PBRT_CPU_GPU auto operator-(Interval<F> i) const
-        -> Interval<decltype(Float() - F())> {
-        using FR = decltype(Float() - F());
-        if (Exactly(0))
-            return Interval<FR>(-i);
-        else if (i.Exactly(0))
-            return Interval<FR>(*this);
-
-        return Interval<FR>(NextFloatDown(LowerBound() - i.UpperBound()),
-                            NextFloatUp(UpperBound() - i.LowerBound()));
+    PBRT_CPU_GPU
+    Interval operator-(Interval i) const {
+        return {SubRoundDown(low, i.high), SubRoundUp(high, i.low)};
     }
 
-    template <typename F>
-    PBRT_CPU_GPU auto operator*(Interval<F> i) const
-        -> Interval<decltype(Float() * F())> {
-        using FR = decltype(Float() * F());
-        if (Exactly(0) || i.Exactly(0))
-            return Interval<FR>(0);
-        if (Exactly(1))
-            return Interval<FR>(i);
-        if (i.Exactly(1))
-            return Interval<FR>(*this);
-
-        FR prod[4] = {LowerBound() * i.LowerBound(), UpperBound() * i.LowerBound(),
-                      LowerBound() * i.UpperBound(), UpperBound() * i.UpperBound()};
-        return Interval<FR>(NextFloatDown(std::min({prod[0], prod[1], prod[2], prod[3]})),
-                            NextFloatUp(std::max({prod[0], prod[1], prod[2], prod[3]})));
+    PBRT_CPU_GPU
+    Interval operator*(Interval i) const {
+        Float lp[4] = {MulRoundDown(low, i.low), MulRoundDown(high, i.low),
+                       MulRoundDown(low, i.high), MulRoundDown(high, i.high)};
+        Float hp[4] = {MulRoundUp(low, i.low), MulRoundUp(high, i.low),
+                       MulRoundUp(low, i.high), MulRoundUp(high, i.high)};
+        return {std::min({lp[0], lp[1], lp[2], lp[3]}),
+                std::max({hp[0], hp[1], hp[2], hp[3]})};
     }
 
-    template <typename F>
-    PBRT_CPU_GPU auto operator/(Interval<F> i) const
-        -> Interval<decltype(Float() / F())> {
-        using FR = decltype(Float() / F());
-        if (Exactly(0))
-            // Not going to worry about NaN...
-            return Interval<FR>(0);
-        if (i.Exactly(1))
-            return Interval<FR>(*this);
+    PBRT_CPU_GPU
+    Interval operator/(Interval i) const;
 
-        if (InRange(0, i))
-            // The interval we're dividing by straddles zero, so just
-            // return an interval of everything.
-            return Interval<FR>(-Infinity, Infinity);
-
-        FR div[4] = {LowerBound() / i.LowerBound(), UpperBound() / i.LowerBound(),
-                     LowerBound() / i.UpperBound(), UpperBound() / i.UpperBound()};
-        return Interval<FR>(NextFloatDown(std::min({div[0], div[1], div[2], div[3]})),
-                            NextFloatUp(std::max({div[0], div[1], div[2], div[3]})));
-    }
-
-    template <typename F>
-    PBRT_CPU_GPU bool operator==(Interval<F> i) const {
+    PBRT_CPU_GPU bool operator==(Interval i) const {
         return low == i.low && high == i.high;
     }
 
@@ -939,197 +856,161 @@ class Interval {
 
     std::string ToString() const;
 
-    template <typename F>
-    PBRT_CPU_GPU Interval &operator+=(Interval<F> i) {
+    PBRT_CPU_GPU Interval &operator+=(Interval i) {
         *this = Interval(*this + i);
         return *this;
     }
-    template <typename F>
-    PBRT_CPU_GPU Interval &operator-=(Interval<F> i) {
+    PBRT_CPU_GPU Interval &operator-=(Interval i) {
         *this = Interval(*this - i);
         return *this;
     }
-    template <typename F>
-    PBRT_CPU_GPU Interval &operator*=(Interval<F> i) {
+    PBRT_CPU_GPU Interval &operator*=(Interval i) {
         *this = Interval(*this * i);
         return *this;
     }
-    template <typename F>
-    PBRT_CPU_GPU Interval &operator/=(Interval<F> i) {
+    PBRT_CPU_GPU Interval &operator/=(Interval i) {
         *this = Interval(*this / i);
         return *this;
     }
     PBRT_CPU_GPU
-    Interval &operator+=(Float f) { return *this += Interval<Float>(f); }
+    Interval &operator+=(Float f) { return *this += Interval(f); }
     PBRT_CPU_GPU
-    Interval &operator-=(Float f) { return *this -= Interval<Float>(f); }
+    Interval &operator-=(Float f) { return *this -= Interval(f); }
     PBRT_CPU_GPU
-    Interval &operator*=(Float f) { return *this *= Interval<Float>(f); }
+    Interval &operator*=(Float f) { return *this *= Interval(f); }
     PBRT_CPU_GPU
-    Interval &operator/=(Float f) { return *this /= Interval<Float>(f); }
+    Interval &operator/=(Float f) { return *this /= Interval(f); }
 
 #ifndef PBRT_IS_GPU_CODE
     static const Interval Pi;
 #endif
 
   private:
-    friend class SOA<Interval<Float>>;
+    friend class SOA<Interval>;
     // Interval Private Members
     Float low, high;
 };
 
-using FloatInterval = Interval<Float>;
-
 // Interval Inline Functions
-template <typename T, typename Float>
-PBRT_CPU_GPU inline bool InRange(T v, Interval<Float> i) {
+PBRT_CPU_GPU inline bool InRange(Float v, Interval i) {
     return v >= i.LowerBound() && v <= i.UpperBound();
 }
-
-template <typename FloatA, typename FloatB>
-PBRT_CPU_GPU inline bool InRange(Interval<FloatA> a, Interval<FloatB> b) {
+PBRT_CPU_GPU inline bool InRange(Interval a, Interval b) {
     return a.LowerBound() <= b.UpperBound() && a.UpperBound() >= b.LowerBound();
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator+(T f, Interval<Float> i) {
-    return Interval<Float>(f) + i;
+inline Interval Interval::operator/(Interval i) const {
+    if (InRange(0, i))
+        // The interval we're dividing by straddles zero, so just
+        // return an interval of everything.
+        return Interval(-Infinity, Infinity);
+
+    Float lowQuot[4] = {DivRoundDown(low, i.low), DivRoundDown(high, i.low),
+                        DivRoundDown(low, i.high), DivRoundDown(high, i.high)};
+    Float highQuot[4] = {DivRoundUp(low, i.low), DivRoundUp(high, i.low),
+                         DivRoundUp(low, i.high), DivRoundUp(high, i.high)};
+    return {std::min({lowQuot[0], lowQuot[1], lowQuot[2], lowQuot[3]}),
+            std::max({highQuot[0], highQuot[1], highQuot[2], highQuot[3]})};
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator-(T f, Interval<Float> i) {
-    return Interval<Float>(f) - i;
+PBRT_CPU_GPU inline Interval Sqr(Interval i) {
+    Float alow = std::abs(i.LowerBound()), ahigh = std::abs(i.UpperBound());
+    if (alow > ahigh)
+        pstd::swap(alow, ahigh);
+    if (InRange(0, i))
+        return Interval(0, MulRoundUp(ahigh, ahigh));
+    return Interval(MulRoundDown(alow, alow), MulRoundUp(ahigh, ahigh));
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator*(T f, Interval<Float> i) {
-    return Interval<Float>(f) * i;
+PBRT_CPU_GPU inline Interval MulPow2(Float s, Interval i);
+PBRT_CPU_GPU inline Interval MulPow2(Interval i, Float s);
+
+PBRT_CPU_GPU inline Interval operator+(Float f, Interval i) {
+    return Interval(f) + i;
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator/(T f, Interval<Float> i) {
-    return Interval<Float>(f) / i;
+PBRT_CPU_GPU inline Interval operator-(Float f, Interval i) {
+    return Interval(f) - i;
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator+(Interval<Float> i, T f) {
-    return i + Interval<Float>(f);
+PBRT_CPU_GPU inline Interval operator*(Float f, Interval i) {
+    return Interval(f) * i;
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator-(Interval<Float> i, T f) {
-    return i - Interval<Float>(f);
+PBRT_CPU_GPU inline Interval operator/(Float f, Interval i) {
+    return Interval(f) / i;
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator*(Interval<Float> i, T f) {
-    return i * Interval<Float>(f);
+PBRT_CPU_GPU inline Interval operator+(Interval i, Float f) {
+    return i + Interval(f);
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    operator/(Interval<Float> i, T f) {
-    return i / Interval<Float>(f);
+PBRT_CPU_GPU inline Interval operator-(Interval i, Float f) {
+    return i - Interval(f);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float Floor(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval operator*(Interval i, Float f) {
+    return i * Interval(f);
+}
+
+PBRT_CPU_GPU inline Interval operator/(Interval i, Float f) {
+    return i / Interval(f);
+}
+
+PBRT_CPU_GPU inline Float Floor(Interval i) {
     return std::floor(i.LowerBound());
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float Ceil(Interval<Float> i) {
+PBRT_CPU_GPU inline Float Ceil(Interval i) {
     return std::ceil(i.UpperBound());
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float floor(Interval<Float> i) {
+PBRT_CPU_GPU inline Float floor(Interval i) {
     return Floor(i);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float ceil(Interval<Float> i) {
+PBRT_CPU_GPU inline Float ceil(Interval i) {
     return Ceil(i);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float Min(Interval<Float> a, Interval<Float> b) {
+PBRT_CPU_GPU inline Float Min(Interval a, Interval b) {
     return std::min(a.LowerBound(), b.LowerBound());
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float Max(Interval<Float> a, Interval<Float> b) {
+PBRT_CPU_GPU inline Float Max(Interval a, Interval b) {
     return std::max(a.UpperBound(), b.UpperBound());
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float min(Interval<Float> a, Interval<Float> b) {
+PBRT_CPU_GPU inline Float min(Interval a, Interval b) {
     return Min(a, b);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Float max(Interval<Float> a, Interval<Float> b) {
+PBRT_CPU_GPU inline Float max(Interval a, Interval b) {
     return Max(a, b);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> Sqrt(Interval<Float> i) {
-    return Interval<Float>(std::max<Float>(0, NextFloatDown(std::sqrt(i.LowerBound()))),
-                           NextFloatUp(std::sqrt(i.UpperBound())));
+PBRT_CPU_GPU inline Interval Sqrt(Interval i) {
+    return {SqrtRoundDown(i.LowerBound()), SqrtRoundUp(i.UpperBound())};
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> sqrt(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval sqrt(Interval i) {
     return Sqrt(i);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> Sqr(Interval<Float> i) {
-    Float slow = Sqr(i.LowerBound()), shigh = Sqr(i.UpperBound());
-    if (slow > shigh)
-        pstd::swap(slow, shigh);
-    if (InRange(0, i))
-        return Interval<Float>(0, NextFloatUp(shigh));
-    return Interval<Float>(NextFloatDown(slow), NextFloatUp(shigh));
+PBRT_CPU_GPU inline Interval FMA(Interval a, Interval b, Interval c) {
+    Float low = std::min({FMARoundDown(a.LowerBound(), b.LowerBound(), c.LowerBound()),
+                          FMARoundDown(a.UpperBound(), b.LowerBound(), c.LowerBound()),
+                          FMARoundDown(a.LowerBound(), b.UpperBound(), c.LowerBound()),
+                          FMARoundDown(a.UpperBound(), b.UpperBound(), c.LowerBound())});
+    Float high = std::max({FMARoundUp(a.LowerBound(), b.LowerBound(), c.UpperBound()),
+                           FMARoundUp(a.UpperBound(), b.LowerBound(), c.UpperBound()),
+                           FMARoundUp(a.LowerBound(), b.UpperBound(), c.UpperBound()),
+                           FMARoundUp(a.UpperBound(), b.UpperBound(), c.UpperBound())});
+    return Interval(low, high);
 }
 
-template <typename FloatA, typename FloatB, typename FloatC>
-PBRT_CPU_GPU inline auto FMA(Interval<FloatA> a, Interval<FloatB> b, Interval<FloatC> c)
-    -> Interval<decltype(FloatA() * FloatB() + FloatC())> {
-    using FT = decltype(FloatA() * FloatB() + FloatC());
-    Float low =
-        NextFloatDown(std::min({FMA(a.LowerBound(), b.LowerBound(), c.LowerBound()),
-                                FMA(a.UpperBound(), b.LowerBound(), c.LowerBound()),
-                                FMA(a.LowerBound(), b.UpperBound(), c.LowerBound()),
-                                FMA(a.UpperBound(), b.UpperBound(), c.LowerBound())}));
-    Float high =
-        NextFloatUp(std::max({FMA(a.LowerBound(), b.LowerBound(), c.UpperBound()),
-                              FMA(a.UpperBound(), b.LowerBound(), c.UpperBound()),
-                              FMA(a.LowerBound(), b.UpperBound(), c.UpperBound()),
-                              FMA(a.UpperBound(), b.UpperBound(), c.UpperBound())}));
-    return Interval<FT>(low, high);
-}
-
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> DifferenceOfProducts(Interval<Float> a,
-                                                         Interval<Float> b,
-                                                         Interval<Float> c,
-                                                         Interval<Float> d) {
+PBRT_CPU_GPU inline Interval DifferenceOfProducts(Interval a, Interval b, Interval c,
+                                                  Interval d) {
     Float ab[4] = {a.LowerBound() * b.LowerBound(), a.UpperBound() * b.LowerBound(),
                    a.LowerBound() * b.UpperBound(), a.UpperBound() * b.UpperBound()};
     Float abLow = std::min({ab[0], ab[1], ab[2], ab[3]});
@@ -1153,65 +1034,54 @@ PBRT_CPU_GPU inline Interval<Float> DifferenceOfProducts(Interval<Float> a,
                                       c[cdLowIndex & 1], d[cdLowIndex >> 1]);
     DCHECK_LE(low, high);
 
-    return {NextFloatDown(low, 2), NextFloatUp(high, 2)};
+    return {NextFloatDown(NextFloatDown(low)), NextFloatUp(NextFloatUp(high))};
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> SumOfProducts(Interval<Float> a, Interval<Float> b,
-                                                  Interval<Float> c, Interval<Float> d) {
+PBRT_CPU_GPU inline Interval SumOfProducts(Interval a, Interval b, Interval c,
+                                           Interval d) {
     return DifferenceOfProducts(a, b, -c, d);
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    MulPow2(T s, Interval<Float> i) {
+PBRT_CPU_GPU inline Interval MulPow2(Float s, Interval i) {
     return MulPow2(i, s);
 }
 
-template <typename T, typename Float>
-PBRT_CPU_GPU inline
-    typename std::enable_if_t<std::is_arithmetic<T>::value, Interval<Float>>
-    MulPow2(Interval<Float> i, T s) {
-    T as = std::abs(s);
+PBRT_CPU_GPU inline Interval MulPow2(Interval i, Float s) {
+    Float as = std::abs(s);
     if (as < 1)
         DCHECK_EQ(1 / as, 1ull << Log2Int(1 / as));
     else
         DCHECK_EQ(as, 1ull << Log2Int(as));
 
     // Multiplication by powers of 2 is exaact
-    return Interval<Float>(std::min(i.LowerBound() * s, i.UpperBound() * s),
-                           std::max(i.LowerBound() * s, i.UpperBound() * s));
+    return Interval(std::min(i.LowerBound() * s, i.UpperBound() * s),
+                    std::max(i.LowerBound() * s, i.UpperBound() * s));
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> Abs(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval Abs(Interval i) {
     if (i.LowerBound() >= 0)
         // The entire interval is greater than zero, so we're all set.
         return i;
     else if (i.UpperBound() <= 0)
         // The entire interval is less than zero.
-        return Interval<Float>(-i.UpperBound(), -i.LowerBound());
+        return Interval(-i.UpperBound(), -i.LowerBound());
     else
         // The interval straddles zero.
-        return Interval<Float>(0, std::max(-i.LowerBound(), i.UpperBound()));
+        return Interval(0, std::max(-i.LowerBound(), i.UpperBound()));
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> abs(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval abs(Interval i) {
     return Abs(i);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> ACos(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval ACos(Interval i) {
     Float low = std::acos(std::min<Float>(1, i.UpperBound()));
     Float high = std::acos(std::max<Float>(-1, i.LowerBound()));
 
-    return Interval<Float>(std::max<Float>(0, NextFloatDown(low)), NextFloatUp(high));
+    return Interval(std::max<Float>(0, NextFloatDown(low)), NextFloatUp(high));
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> Sin(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval Sin(Interval i) {
     CHECK_GE(i.LowerBound(), -1e-16);
     CHECK_LE(i.UpperBound(), 2.0001 * Pi);
     Float low = std::sin(std::max<Float>(0, i.LowerBound()));
@@ -1225,11 +1095,10 @@ PBRT_CPU_GPU inline Interval<Float> Sin(Interval<Float> i) {
     if (InRange((3.f / 2.f) * Pi, i))
         low = -1;
 
-    return Interval<Float>(low, high);
+    return Interval(low, high);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> Cos(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval Cos(Interval i) {
     CHECK_GE(i.LowerBound(), -1e-16);
     CHECK_LE(i.UpperBound(), 2.0001 * Pi);
     Float low = std::cos(std::max<Float>(0, i.LowerBound()));
@@ -1241,21 +1110,19 @@ PBRT_CPU_GPU inline Interval<Float> Cos(Interval<Float> i) {
     if (InRange(Pi, i))
         low = -1;
 
-    return Interval<Float>(low, high);
+    return Interval(low, high);
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline bool Quadratic(Interval<Float> a, Interval<Float> b,
-                                   Interval<Float> c, Interval<Float> *t0,
-                                   Interval<Float> *t1) {
+PBRT_CPU_GPU inline bool Quadratic(Interval a, Interval b, Interval c, Interval *t0,
+                                   Interval *t1) {
     // Find quadratic discriminant
-    Interval<Float> discrim = DifferenceOfProducts(b, b, MulPow2(4, a), c);
+    Interval discrim = DifferenceOfProducts(b, b, MulPow2(4, a), c);
     if (discrim.LowerBound() < 0)
         return false;
-    Interval<Float> floatRootDiscrim = Sqrt(discrim);
+    Interval floatRootDiscrim = Sqrt(discrim);
 
     // Compute quadratic _t_ values
-    Interval<Float> q;
+    Interval q;
     if ((Float)b < 0)
         q = MulPow2(-.5, b - floatRootDiscrim);
     else
@@ -1267,15 +1134,14 @@ PBRT_CPU_GPU inline bool Quadratic(Interval<Float> a, Interval<Float> b,
     return true;
 }
 
-template <typename Float>
-PBRT_CPU_GPU inline Interval<Float> SumSquares(Interval<Float> i) {
+PBRT_CPU_GPU inline Interval SumSquares(Interval i) {
     return Sqr(i);
 }
 
-template <typename Float, typename... Args>
-PBRT_CPU_GPU inline Interval<Float> SumSquares(Interval<Float> i, Args... args) {
-    Interval<Float> ss = FMA(i, i, SumSquares(args...));
-    return Interval<Float>(std::max<Float>(0, ss.LowerBound()), ss.UpperBound());
+template <typename... Args>
+PBRT_CPU_GPU inline Interval SumSquares(Interval i, Args... args) {
+    Interval ss = FMA(i, i, SumSquares(args...));
+    return Interval(std::max<Float>(0, ss.LowerBound()), ss.UpperBound());
 }
 
 PBRT_CPU_GPU
@@ -1328,6 +1194,7 @@ PBRT_CPU_GPU inline void initDiag(Float m[N][N], int i, Float v, Args... args) {
 template <int N>
 class SquareMatrix {
   public:
+    // SquareMatrix Public Methods
     PBRT_CPU_GPU
     static SquareMatrix Zero() {
         SquareMatrix m;
@@ -1374,6 +1241,7 @@ class SquareMatrix {
                 r.m[i][j] += m.m[i][j];
         return r;
     }
+
     PBRT_CPU_GPU
     SquareMatrix operator*(Float s) const {
         SquareMatrix r = *this;
@@ -1423,33 +1291,36 @@ class SquareMatrix {
     }
 
     PBRT_CPU_GPU
-    Float Determinant() const;
+    bool IsIdentity() const;
 
-    PBRT_CPU_GPU
-    bool IsIdentity() const {
-        for (int i = 0; i < N; ++i)
-            for (int j = 0; j < N; ++j) {
-                if (i == j) {
-                    if (m[i][j] != 1)
-                        return false;
-                } else if (m[i][j] != 0)
-                    return false;
-            }
-        return true;
-    }
     std::string ToString() const;
 
     PBRT_CPU_GPU
     pstd::span<const Float> operator[](int i) const { return m[i]; }
-
     PBRT_CPU_GPU
     pstd::span<Float> operator[](int i) { return pstd::span<Float>(m[i]); }
+
+    PBRT_CPU_GPU
+    Float Determinant() const;
 
   private:
     Float m[N][N];
 };
 
 // SquareMatrix Inline Methods
+template <int N>
+inline bool SquareMatrix<N>::IsIdentity() const {
+    for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j) {
+            if (i == j) {
+                if (m[i][j] != 1)
+                    return false;
+            } else if (m[i][j] != 0)
+                return false;
+        }
+    return true;
+}
+
 template <int N>
 PBRT_CPU_GPU inline SquareMatrix<N> operator*(Float s, const SquareMatrix<N> &m) {
     return m * s;
@@ -1476,6 +1347,11 @@ PBRT_CPU_GPU inline Float SquareMatrix<3>::Determinant() const {
 }
 
 template <int N>
+PBRT_CPU_GPU inline SquareMatrix<N> Transpose(const SquareMatrix<N> &m);
+template <int N>
+PBRT_CPU_GPU pstd::optional<SquareMatrix<N>> Inverse(const SquareMatrix<N> &);
+
+template <int N>
 PBRT_CPU_GPU inline SquareMatrix<N> Transpose(const SquareMatrix<N> &m) {
     SquareMatrix<N> r;
     for (int i = 0; i < N; ++i)
@@ -1483,9 +1359,6 @@ PBRT_CPU_GPU inline SquareMatrix<N> Transpose(const SquareMatrix<N> &m) {
             r[i][j] = m[j][i];
     return r;
 }
-
-template <int N>
-PBRT_CPU_GPU pstd::optional<SquareMatrix<N>> Inverse(const SquareMatrix<N> &);
 
 template <>
 PBRT_CPU_GPU inline pstd::optional<SquareMatrix<3>> Inverse(const SquareMatrix<3> &m) {

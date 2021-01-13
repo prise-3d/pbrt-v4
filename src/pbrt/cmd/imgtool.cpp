@@ -36,6 +36,8 @@ extern "C" {
 #include <map>
 #include <string>
 
+#include <flip.h>
+
 #ifdef PBRT_BUILD_GPU_RENDERER
 
 #include <cuda.h>
@@ -119,7 +121,7 @@ static std::map<std::string, CommandUsage> commandUsage = {
     --crop <x0,x1,y0,y1> Crop images before performing diff.
     --difftol <v>      Acceptable image difference percentage before differences
                        are reported. Default: 0
-    --metric <name>    Error metric to use. (Options: "L1", "MSE", "MRSE")
+    --metric <name>    Error metric to use. (Options: "MAE", "MSE", "MRSE", "FLIP")
     --outfile <name>   Filename to use for saving an image that encodes the
                        absolute value of per-pixel differences.
     --reference <name> Filename for reference image
@@ -138,7 +140,7 @@ static std::map<std::string, CommandUsage> commandUsage = {
       std::string(R"(
    --crop <x0,x1,y0,y1> Crop images before performing diff.
    --errorfile <name>   Output average error image.
-   --metric <name>      Error metric to use. (Options: "L1", MSE", "MRSE")
+   --metric <name>      Error metric to use. (Options: "MAE", MSE", "MRSE")
    --reference <name>   Reference image filename.
 )")}},
     {"falsecolor", {"falsecolor [options] <filename>", std::string(R"(
@@ -147,10 +149,10 @@ static std::map<std::string, CommandUsage> commandUsage = {
     --outfile <name>   Filename for output image.
     --plusminus        Visualize green > 0, red < 0.
 )")}},
-    {"makeenv", {"makeenv [options] <filename>", std::string(R"(
-    --outfile <name>   Filename of environment map image.
-    --resolution <n>   Resolution of environment map. Default: calculated
-                       from resolution of provited lat-long environment map.
+    {"makeequiarea", {"makeequiarea [options] <filename>", std::string(R"(
+    --outfile <name>   Filename of lat-long (equirect) environment map image.
+    --resolution <n>   Resolution of output image. Default: calculated
+                       from resolution of provided image.
 )")}},
     {"makeemitters", {"makeemitters [options] <filename>", std::string(R"(
     --downsample <n>   Downsample the image by a factor of n in both dimensions
@@ -343,6 +345,7 @@ int assemble(int argc, char *argv[]) {
     std::vector<bool> seenPixel;
     int seenMultiple = 0;
     Bounds2i fullBounds;
+    const RGBColorSpace *colorSpace = nullptr;
     for (const std::string &file : infiles) {
         if (!HasExtension(file, "exr"))
             usage("assemble", "only EXR images include the image bounding boxes that "
@@ -366,7 +369,6 @@ int assemble(int argc, char *argv[]) {
             continue;
         }
 
-        const RGBColorSpace *colorSpace = nullptr;
         if (fullImage.Resolution() == Point2i(0, 0)) {
             // First image read.
             fullImage = Image(image.Format(), *metadata.fullResolution,
@@ -419,7 +421,8 @@ int assemble(int argc, char *argv[]) {
             for (int x = 0; x < image.Resolution().x; ++x) {
                 Point2i fullp{x + metadata.pixelBounds->pMin.x,
                               y + metadata.pixelBounds->pMin.y};
-                size_t fullOffset = fullImage.PixelOffset(fullp);
+                CHECK(InsideExclusive(fullp, fullBounds));
+                size_t fullOffset = fullp.x + fullp.y * fullImage.Resolution().x;
                 if (seenPixel[fullOffset])
                     ++seenMultiple;
                 seenPixel[fullOffset] = true;
@@ -677,8 +680,8 @@ int error(int argc, char *argv[]) {
 
     if (filenameBase.empty())
         usage("error", "Must provide base filename.");
-    if (metric != "MSE" && metric != "MRSE" && metric != "L1")
-        usage("error", "%s: --metric must be \"L1\", \"MSE\" or \"MRSE\".",
+    if (metric != "MSE" && metric != "MRSE" && metric != "MAE")
+        usage("error", "%s: --metric must be \"MAE\", \"MSE\", or \"MRSE\".",
               metric.c_str());
 
     std::vector<std::string> filenames = MatchingFilenames(filenameBase);
@@ -728,8 +731,8 @@ int error(int argc, char *argv[]) {
 
         Image diffImage;
         ImageChannelValues error(referenceImage.NChannels());
-        if (metric == "L1")
-            error = im.L1Error(im.AllChannelsDesc(), referenceImage, &diffImage);
+        if (metric == "MAE")
+            error = im.MAE(im.AllChannelsDesc(), referenceImage, &diffImage);
         else if (metric == "MSE")
             error = im.MSE(im.AllChannelsDesc(), referenceImage, &diffImage);
         else
@@ -827,8 +830,8 @@ int diff(int argc, char *argv[]) {
     if (referenceFile.empty())
         usage("diff", "must specify --reference image");
 
-    if (metric != "L1" && metric != "MSE" && metric != "MRSE")
-        usage("diff", "%s: --metric must be \"L1\", \"MSE\" or \"MRSE\".",
+    if (metric != "MAE" && metric != "MSE" && metric != "MRSE" && metric != "FLIP")
+        usage("diff", "%s: --metric must be \"MAE\", \"MSE\", \"MRSE\", or \"FLIP\".",
               metric.c_str());
 
     ImageAndMetadata refRead = Image::Read(referenceFile);
@@ -906,14 +909,50 @@ int diff(int argc, char *argv[]) {
         fprintf(stderr, "%s: clamped %d infinite pixel values.\n", referenceFile.c_str(),
                 nRefClamped);
 
-    Image diffImage;
+    Image errorImage;
     ImageChannelValues error(refImage.NChannels());
-    if (metric == "L1")
-        error = image.L1Error(image.AllChannelsDesc(), refImage, &diffImage);
+    if (metric == "MAE")
+        error = image.MAE(image.AllChannelsDesc(), refImage, &errorImage);
     else if (metric == "MSE")
-        error = image.MSE(image.AllChannelsDesc(), refImage, &diffImage);
-    else
-        error = image.MRSE(image.AllChannelsDesc(), refImage, &diffImage);
+        error = image.MSE(image.AllChannelsDesc(), refImage, &errorImage);
+    else if (metric == "MRSE")
+        error = image.MRSE(image.AllChannelsDesc(), refImage, &errorImage);
+    else {
+        // FLIP
+        if (refImage.NChannels() != 3) {
+            fprintf(stderr, "%s: only 3 channel images are currently supported for FLIP.\n",
+                    referenceFile.c_str());
+            return 1;
+        }
+
+        errorImage = Image(PixelFormat::Float, image.Resolution(), {"Error"});
+        FLIPOptions opt; /* use defaults for now */
+        image = image.ConvertToFormat(PixelFormat::Float);
+        refImage = refImage.ConvertToFormat(PixelFormat::Float);
+
+        // Clamp to [0,1]...
+        for (int y = 0; y < image.Resolution().y; ++y)
+            for (int x = 0; x < image.Resolution().x; ++x)
+                for (int c = 0; c < image.NChannels(); ++c) {
+                    image.SetChannel({x, y}, c, Clamp(image.GetChannel({x, y}, c), 0, 1));
+                    refImage.SetChannel({x, y}, c, Clamp(refImage.GetChannel({x, y}, c), 0, 1));
+                }
+
+        ComputeFLIPError((float *)image.RawPointer({0, 0}),
+                         (float *)refImage.RawPointer({0, 0}),
+                         (float *)errorImage.RawPointer({0, 0}),
+                         image.Resolution().x, image.Resolution().y,
+                         opt);
+
+        for (int c = 0; c < image.NChannels(); ++c)
+            error[c] = 0;
+        for (int y = 0; y < image.Resolution().y; ++y)
+            for (int x = 0; x < image.Resolution().x; ++x)
+                for (int c = 0; c < image.NChannels(); ++c)
+                    error[c] += errorImage.GetChannel({x, y}, 0);
+        for (int c = 0; c < image.NChannels(); ++c)
+            error[c] /= image.Resolution().x * image.Resolution().y;
+    }
 
     if (error.MaxValue() == 0)
         // Same same.
@@ -933,7 +972,7 @@ int diff(int argc, char *argv[]) {
            referenceFile, imageAverage, refAverage, deltaString, metric, error.Average());
 
     if (!outFile.empty()) {
-        if (!diffImage.Write(outFile))
+        if (!errorImage.Write(outFile))
             return 1;
     }
 
@@ -988,15 +1027,6 @@ static void printImageStats(const char *name, const Image &image,
         printf("\tNDC from world: %s\n", metadata.NDCFromWorld->ToString().c_str());
     if (metadata.samplesPerPixel)
         printf("\tsamples per pixel: %d\n", *metadata.samplesPerPixel);
-
-    if (metadata.estimatedVariance) {
-        printf("\taverage pixel variance: %g\n", *metadata.estimatedVariance);
-        if (metadata.renderTimeSeconds)
-            printf("\tMonte Carlo efficiency: %g\n",
-                   1. / (*metadata.renderTimeSeconds * *metadata.estimatedVariance));
-        else
-            printf("\n");
-    }
 
     if (metadata.MSE)
         printf("\tMSE vs. reference image: %g\n", *metadata.MSE);
@@ -1776,12 +1806,12 @@ int makeemitters(int argc, char *argv[]) {
     return 0;
 }
 
-int makeenv(int argc, char *argv[]) {
+int makeequiarea(int argc, char *argv[]) {
     std::string inFilename, outFilename;
     int resolution = 0;
 
     auto onError = [](const std::string &err) {
-        usage("makeenv", "%s", err.c_str());
+        usage("makeequiarea", "%s", err.c_str());
         exit(1);
     };
     while (*argv != nullptr) {
@@ -1789,17 +1819,17 @@ int makeenv(int argc, char *argv[]) {
             ParseArg(&argv, "outfile", &outFilename, onError)) {
             // success
         } else if (argv[0][0] == '-')
-            usage("makeenv", "%s: unknown command flag", *argv);
+            usage("makeequiarea", "%s: unknown command flag", *argv);
         else if (inFilename.empty()) {
             inFilename = *argv;
             ++argv;
         } else
-            usage("makeenv", "multiple input filenames provided.");
+            usage("makeequiarea", "multiple input filenames provided.");
     }
     if (inFilename.empty())
-        usage("makeenv", "input image filename must be provided.");
+        usage("makeequiarea", "input image filename must be provided.");
     if (outFilename.empty())
-        usage("makeenv", "output image filename must be provided.");
+        usage("makeequiarea", "output image filename must be provided.");
 
     ImageAndMetadata latlong = Image::Read(inFilename);
     const Image &latlongImage = latlong.image;
@@ -2144,8 +2174,29 @@ int denoise_optix(int argc, char *argv[]) {
     ImageAndMetadata im = Image::Read(inFilename);
     Image &image = im.image;
 
+    int nLayers = 3;
+    ImageChannelDesc desc[3] = {
+        image.GetChannelDesc({"R", "G", "B"}),
+        image.GetChannelDesc({"Albedo.R", "Albedo.G", "Albedo.B"}),
+        image.GetChannelDesc({"Nsx", "Nsy", "Nsz"})};
+    if (!desc[0]) {
+        fprintf(stderr, "%s: image doesn't have R, G, B channels.", inFilename.c_str());
+        return 1;
+    }
+    if (!desc[1]) {
+        fprintf(stderr, "Warning: %s: image doesn't have Albedo.{R,G,B} channels. "
+                "Denoising quality may suffer.\n", inFilename.c_str());
+        nLayers = 1;
+    }
+    if (!desc[2]) {
+        fprintf(stderr, "Warning: %s: image doesn't have Nsx, Nsy, Nsz channels. "
+                "Denoising quality may suffer.\n", inFilename.c_str());
+        nLayers = 1;
+    }
+
     OptixDenoiserOptions options = {};
-    options.inputKind = OPTIX_DENOISER_INPUT_RGB_ALBEDO_NORMAL;
+    options.inputKind = (nLayers = 3) ? OPTIX_DENOISER_INPUT_RGB_ALBEDO_NORMAL :
+        OPTIX_DENOISER_INPUT_RGB;
 
     OptixDenoiser denoiserHandle;
     OPTIX_CHECK(optixDenoiserCreate(optixContext, &options, &denoiserHandle));
@@ -2170,27 +2221,8 @@ int denoise_optix(int argc, char *argv[]) {
     CUDAMemoryResource cudaMemoryResource;
     Allocator alloc(&cudaMemoryResource);
 
-    ImageChannelDesc desc[3] = {
-        image.GetChannelDesc({"R", "G", "B"}),
-        image.GetChannelDesc({"Albedo.R", "Albedo.G", "Albedo.B"}),
-        image.GetChannelDesc({"Nsx", "Nsy", "Nsz"})};
-    if (!desc[0]) {
-        fprintf(stderr, "%s: image doesn't have R, G, B channels.", inFilename.c_str());
-        return 1;
-    }
-    if (!desc[1]) {
-        fprintf(stderr, "%s: image doesn't have Albedo.{R,G,B} channels.",
-                inFilename.c_str());
-        return 1;
-    }
-    if (!desc[2]) {
-        fprintf(stderr, "%s: image doesn't have Nsx, Nsy, Nsz channels.",
-                inFilename.c_str());
-        return 1;
-    }
-
-    OptixImage2D *inputLayers = alloc.allocate_object<OptixImage2D>(3);
-    for (int i = 0; i < 3; ++i) {
+    OptixImage2D *inputLayers = alloc.allocate_object<OptixImage2D>(nLayers);
+    for (int i = 0; i < nLayers; ++i) {
         inputLayers[i].width = image.Resolution().x;
         inputLayers[i].height = image.Resolution().y;
         inputLayers[i].rowStrideInBytes = image.Resolution().x * 3 * sizeof(float);
@@ -2235,7 +2267,7 @@ int denoise_optix(int argc, char *argv[]) {
 
     OPTIX_CHECK(optixDenoiserInvoke(
         denoiserHandle, 0 /* stream */, &params, CUdeviceptr(denoiserState),
-        memorySizes.stateSizeInBytes, inputLayers, 3, 0 /* offset x */, 0 /* offset y */,
+        memorySizes.stateSizeInBytes, inputLayers, nLayers, 0 /* offset x */, 0 /* offset y */,
         outputImage, CUdeviceptr(scratchBuffer),
         memorySizes.withoutOverlapScratchSizeInBytes));
 
@@ -2283,8 +2315,8 @@ int main(int argc, char *argv[]) {
         return help(argc - 2, argv + 2);
     else if (strcmp(argv[1], "info") == 0)
         return info(argc - 2, argv + 2);
-    else if (strcmp(argv[1], "makeenv") == 0)
-        return makeenv(argc - 2, argv + 2);
+    else if (strcmp(argv[1], "makeequiarea") == 0)
+        return makeequiarea(argc - 2, argv + 2);
     else if (strcmp(argv[1], "makeemitters") == 0)
         return makeemitters(argc - 2, argv + 2);
     else if (strcmp(argv[1], "makesky") == 0)

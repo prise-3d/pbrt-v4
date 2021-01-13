@@ -35,16 +35,6 @@ void PrintStackTrace();
 // CHECK Macro Definitions
 #define CHECK(x) (!(!(x) && (LOG_FATAL("Check failed: %s", #x), true)))
 
-#define CHECK_IMPL(a, b, op)                                                           \
-    do {                                                                               \
-        auto va = a;                                                                   \
-        auto vb = b;                                                                   \
-        if (!(va op vb)) {                                                             \
-            LOG_FATAL("Check failed: %s " #op " %s with %s = %s, %s = %s", #a, #b, #a, \
-                      va, #b, vb);                                                     \
-        }                                                                              \
-    } while (false) /* swallow semicolon */
-
 #define CHECK_EQ(a, b) CHECK_IMPL(a, b, ==)
 #define CHECK_NE(a, b) CHECK_IMPL(a, b, !=)
 #define CHECK_GT(a, b) CHECK_IMPL(a, b, >)
@@ -52,9 +42,19 @@ void PrintStackTrace();
 #define CHECK_LT(a, b) CHECK_IMPL(a, b, <)
 #define CHECK_LE(a, b) CHECK_IMPL(a, b, <=)
 
+// CHECK\_IMPL Macro Definition
+#define CHECK_IMPL(a, b, op)                                                           \
+    do {                                                                               \
+        auto va = a;                                                                   \
+        auto vb = b;                                                                   \
+        if (!(va op vb))                                                               \
+            LOG_FATAL("Check failed: %s " #op " %s with %s = %s, %s = %s", #a, #b, #a, \
+                      va, #b, vb);                                                     \
+    } while (false) /* swallow semicolon */
+
 #endif  // PBRT_IS_GPU_CODE
 
-#ifndef NDEBUG
+#ifdef PBRT_DEBUG_BUILD
 
 #define DCHECK(x) (CHECK(x))
 #define DCHECK_EQ(a, b) CHECK_EQ(a, b)
@@ -66,13 +66,20 @@ void PrintStackTrace();
 
 #else
 
-#define DCHECK(x)
-#define DCHECK_EQ(a, b)
-#define DCHECK_NE(a, b)
-#define DCHECK_GT(a, b)
-#define DCHECK_GE(a, b)
-#define DCHECK_LT(a, b)
-#define DCHECK_LE(a, b)
+#define EMPTY_CHECK \
+    do {            \
+    } while (false) /* swallow semicolon */
+
+// Use an empty check (rather than expanding the macros to nothing) to swallow the
+// semicolon at the end, and avoid empty if-statements.
+#define DCHECK(x) EMPTY_CHECK
+
+#define DCHECK_EQ(a, b) EMPTY_CHECK
+#define DCHECK_NE(a, b) EMPTY_CHECK
+#define DCHECK_GT(a, b) EMPTY_CHECK
+#define DCHECK_GE(a, b) EMPTY_CHECK
+#define DCHECK_LT(a, b) EMPTY_CHECK
+#define DCHECK_LE(a, b) EMPTY_CHECK
 
 #endif
 
@@ -104,10 +111,10 @@ void PrintStackTrace();
             ++numTrue;                                                                  \
     } while (0)
 
-#ifdef NDEBUG
-#define DCHECK_RARE(freq, condition)
-#else
+#ifdef PBRT_DEBUG_BUILD
 #define DCHECK_RARE(freq, condition) CHECK_RARE(freq, condition)
+#else
+#define DCHECK_RARE(freq, condition)
 #endif  // NDEBUG
 
 #endif  // PBRT_IS_GPU_CODE
@@ -115,7 +122,9 @@ void PrintStackTrace();
 // CheckCallbackScope Definition
 class CheckCallbackScope {
   public:
+    // CheckCallbackScope Public Methods
     CheckCallbackScope(std::function<std::string(void)> callback);
+
     ~CheckCallbackScope();
 
     CheckCallbackScope(const CheckCallbackScope &) = delete;
@@ -124,6 +133,7 @@ class CheckCallbackScope {
     static void Fail();
 
   private:
+    // CheckCallbackScope Private Members
     static std::vector<std::function<std::string(void)>> callbacks;
 };
 

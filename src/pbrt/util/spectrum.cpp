@@ -31,24 +31,14 @@
 namespace pbrt {
 
 // Spectrum Function Definitions
-XYZ SpectrumToXYZ(SpectrumHandle s) {
-    XYZ xyz;
-    for (Float lambda = Lambda_min; lambda <= Lambda_max; ++lambda) {
-        xyz.X += Spectra::X()(lambda) * s(lambda);
-        xyz.Y += Spectra::Y()(lambda) * s(lambda);
-        xyz.Z += Spectra::Z()(lambda) * s(lambda);
-    }
-    return xyz / CIE_Y_integral;
-}
-
 Float SpectrumToPhotometric(SpectrumHandle s) {
-    // We have to handle RGBSpectrum separately here as it's composed of an
+    // We have to handle RGBIlluminantSpectrum separately here as it's composed of an
     // illuminant spectrum and an RGB multiplier. We only want to consider the
     // illuminant for the sake of this calculation, and we should consider the
     // RGB separately for the purposes of target power/illuminance computation
     // in the lights themselves (but we currently don't)
-    if (s.Is<RGBSpectrum>())
-        s = s.Cast<RGBSpectrum>()->Illluminant();
+    if (s.Is<RGBIlluminantSpectrum>())
+        s = s.Cast<RGBIlluminantSpectrum>()->Illluminant();
 
     Float y = 0;
     for (Float lambda = Lambda_min; lambda <= Lambda_max; ++lambda)
@@ -57,29 +47,17 @@ Float SpectrumToPhotometric(SpectrumHandle s) {
     return y * K_m;
 }
 
+XYZ SpectrumToXYZ(SpectrumHandle s) {
+    return XYZ(InnerProduct(&Spectra::X(), s), InnerProduct(&Spectra::Y(), s),
+               InnerProduct(&Spectra::Z(), s));
+}
+
 std::string SpectrumHandle::ToString() const {
     if (!ptr())
         return "(nullptr)";
 
     auto tostr = [&](auto ptr) { return ptr->ToString(); };
     return DispatchCPU(tostr);
-}
-
-std::string SpectrumHandle::ParameterType() const {
-    auto pt = [&](auto ptr) { return ptr->ParameterType(); };
-    return DispatchCPU(pt);
-}
-
-std::string SpectrumHandle::ParameterString() const {
-    auto ps = [&](auto ptr) { return ptr->ParameterString(); };
-    return DispatchCPU(ps);
-}
-
-Float SpectrumToY(SpectrumHandle s) {
-    Float y = 0;
-    for (Float lambda = Lambda_min; lambda <= Lambda_max; ++lambda)
-        y += Spectra::Y()(lambda) * s(lambda);
-    return y / CIE_Y_integral;
 }
 
 // Spectrum Method Definitions
@@ -112,22 +90,14 @@ PiecewiseLinearSpectrum::PiecewiseLinearSpectrum(pstd::span<const Float> l,
 }
 
 std::string PiecewiseLinearSpectrum::ToString() const {
-    return std::string("[ PiecewiseLinearSpectrum ") + ParameterString() + " ]";
-}
-
-std::string PiecewiseLinearSpectrum::ParameterType() const {
-    return "spectrum";
-}
-
-std::string PiecewiseLinearSpectrum::ParameterString() const {
     std::string name = FindMatchingNamedSpectrum(this);
     if (!name.empty())
         return StringPrintf("\"%s\"", name);
 
-    std::string ret;
+    std::string ret = "[ PiecewiseLinearSpectrum ";
     for (size_t i = 0; i < lambdas.size(); ++i)
         ret += StringPrintf("%f %f ", lambdas[i], values[i]);
-    return ret;
+    return ret + " ]";
 }
 
 pstd::optional<SpectrumHandle> PiecewiseLinearSpectrum::Read(const std::string &fn,
@@ -159,16 +129,30 @@ pstd::optional<SpectrumHandle> PiecewiseLinearSpectrum::Read(const std::string &
     }
 }
 
+PiecewiseLinearSpectrum *PiecewiseLinearSpectrum::FromInterleaved(
+    pstd::span<const Float> samples, bool normalize, Allocator alloc) {
+    CHECK_EQ(0, samples.size() % 2);
+    int n = samples.size() / 2;
+    std::vector<Float> lambda(n), v(n);
+    for (size_t i = 0; i < n; ++i) {
+        lambda[i] = samples[2 * i];
+        v[i] = samples[2 * i + 1];
+        if (i > 0)
+            CHECK_GT(lambda[i], lambda[i - 1]);
+    }
+
+    PiecewiseLinearSpectrum *spec =
+        alloc.new_object<pbrt::PiecewiseLinearSpectrum>(lambda, v, alloc);
+
+    if (normalize)
+        // Normalize to have luminance of 1.
+        spec->Scale(1 / InnerProduct(spec, &Spectra::Y()));
+
+    return spec;
+}
+
 std::string BlackbodySpectrum::ToString() const {
     return StringPrintf("[ BlackbodySpectrum T: %f ]", T);
-}
-
-std::string BlackbodySpectrum::ParameterType() const {
-    return "blackbody";
-}
-
-std::string BlackbodySpectrum::ParameterString() const {
-    return StringPrintf("%f", T);
 }
 
 SampledSpectrum ConstantSpectrum::Sample(const SampledWavelengths &) const {
@@ -177,16 +161,6 @@ SampledSpectrum ConstantSpectrum::Sample(const SampledWavelengths &) const {
 
 std::string ConstantSpectrum::ToString() const {
     return StringPrintf("[ ConstantSpectrum c: %f ]", c);
-}
-
-std::string ConstantSpectrum::ParameterType() const {
-    LOG_FATAL("Shouldn't be called");
-    return {};
-}
-
-std::string ConstantSpectrum::ParameterString() const {
-    LOG_FATAL("Shouldn't be called");
-    return {};
 }
 
 std::string DenselySampledSpectrum::ToString() const {
@@ -199,21 +173,14 @@ std::string DenselySampledSpectrum::ToString() const {
     return s;
 }
 
-std::string DenselySampledSpectrum::ParameterType() const {
-    LOG_FATAL("Shouldn't be called");
-    return {};
-}
-
-std::string DenselySampledSpectrum::ParameterString() const {
-    LOG_FATAL("Shouldn't be called");
-    return {};
-}
-
 std::string SampledWavelengths::ToString() const {
-    std::string r = "[";
+    std::string r = "[ SampledWavelengths lambda: [";
     for (size_t i = 0; i < lambda.size(); ++i)
         r += StringPrintf(" %f%c", lambda[i], i != lambda.size() - 1 ? ',' : ' ');
-    r += ']';
+    r += "] pdf: [";
+    for (size_t i = 0; i < lambda.size(); ++i)
+        r += StringPrintf(" %f%c", pdf[i], i != pdf.size() - 1 ? ',' : ' ');
+    r += "] ]";
     return r;
 }
 
@@ -251,38 +218,39 @@ RGB SampledSpectrum::ToRGB(const SampledWavelengths &lambda,
     return cs.ToRGB(xyz);
 }
 
-RGBReflectanceSpectrum::RGBReflectanceSpectrum(const RGBColorSpace &cs, const RGB &rgb)
-    : rgb(rgb), rsp(cs.ToRGBCoeffs(rgb)) {}
+RGBAlbedoSpectrum::RGBAlbedoSpectrum(const RGBColorSpace &cs, const RGB &rgb) {
+    DCHECK_LE(std::max({rgb.r, rgb.g, rgb.b}), 1);
+    DCHECK_GE(std::min({rgb.r, rgb.g, rgb.b}), 0);
+    rsp = cs.ToRGBCoeffs(rgb);
+}
 
-RGBSpectrum::RGBSpectrum(const RGBColorSpace &cs, const RGB &rgb)
-    : rgb(rgb), illuminant(&cs.illuminant) {
+RGBUnboundedSpectrum::RGBUnboundedSpectrum(const RGBColorSpace &cs, const RGB &rgb) {
+    Float m = std::max({rgb.r, rgb.g, rgb.b});
+    if (m <= 1)
+        rsp = cs.ToRGBCoeffs(rgb);
+    else {
+        scale = 2 * m;
+        rsp = cs.ToRGBCoeffs(scale ? rgb / scale : RGB(0, 0, 0));
+    }
+}
+
+RGBIlluminantSpectrum::RGBIlluminantSpectrum(const RGBColorSpace &cs, const RGB &rgb)
+    : illuminant(&cs.illuminant) {
     Float m = std::max({rgb.r, rgb.g, rgb.b});
     scale = 2 * m;
     rsp = cs.ToRGBCoeffs(scale ? rgb / scale : RGB(0, 0, 0));
 }
 
-std::string RGBReflectanceSpectrum::ToString() const {
-    return StringPrintf("[ RGBReflectanceSpectrum rsp: %s ]", rsp);
+std::string RGBAlbedoSpectrum::ToString() const {
+    return StringPrintf("[ RGBAlbedoSpectrum rsp: %s ]", rsp);
 }
 
-std::string RGBReflectanceSpectrum::ParameterType() const {
-    return "rgb";
+std::string RGBUnboundedSpectrum::ToString() const {
+    return StringPrintf("[ RGBUnboundedSpectrum rsp: %s ]", rsp);
 }
 
-std::string RGBReflectanceSpectrum::ParameterString() const {
-    return StringPrintf("%f %f %f", rgb.r, rgb.g, rgb.b);
-}
-
-std::string RGBSpectrum::ParameterType() const {
-    return "rgb";
-}
-
-std::string RGBSpectrum::ParameterString() const {
-    return StringPrintf("%f %f %f", rgb.r, rgb.g, rgb.b);
-}
-
-std::string RGBSpectrum::ToString() const {
-    return StringPrintf("[ RGBSpectrum rgb: %s rsp: %s scale: %f illuminant: %s ]", rgb,
+std::string RGBIlluminantSpectrum::ToString() const {
+    return StringPrintf("[ RGBIlluminantSpectrum: rsp: %s scale: %f illuminant: %s ]",
                         rsp, scale, *illuminant);
 }
 
@@ -1300,6 +1268,28 @@ const Float Cu_k[] = {
     729.318665, 4.430000,   751.419250, 4.619563,   774.901123, 4.817000,   799.897949,
     5.034125,   826.561157, 5.260000,   855.063293, 5.485625,   885.601257, 5.717000,
 };
+
+const Float CuZn_eta[] = {
+    290, 1.358, 300, 1.388, 310, 1.419, 320, 1.446, 330, 1.473, 340, 1.494, 350, 1.504,
+    360, 1.503, 370, 1.497, 380, 1.487, 390, 1.471, 400, 1.445, 410, 1.405, 420, 1.350,
+    430, 1.278, 440, 1.191, 450, 1.094, 460, 0.994, 470, 0.900, 480, 0.816, 490, 0.745,
+    500, 0.686, 510, 0.639, 520, 0.602, 530, 0.573, 540, 0.549, 550, 0.527, 560, 0.505,
+    570, 0.484, 580, 0.468, 590, 0.460, 600, 0.450, 610, 0.452, 620, 0.449, 630, 0.445,
+    640, 0.444, 650, 0.444, 660, 0.445, 670, 0.444, 680, 0.444, 690, 0.445, 700, 0.446,
+    710, 0.448, 720, 0.450, 730, 0.452, 740, 0.455, 750, 0.457, 760, 0.458, 770, 0.460,
+    780, 0.464, 790, 0.469, 800, 0.473, 810, 0.478, 820, 0.481, 830, 0.483, 840, 0.486,
+    850, 0.490, 860, 0.494, 870, 0.500, 880, 0.507, 890, 0.515};
+
+const Float CuZn_k[] = {
+    290, 1.688, 300, 1.731, 310, 1.764, 320, 1.789, 330, 1.807, 340, 1.815, 350, 1.815,
+    360, 1.815, 370, 1.818, 380, 1.818, 390, 1.813, 400, 1.805, 410, 1.794, 420, 1.786,
+    430, 1.784, 440, 1.797, 450, 1.829, 460, 1.883, 470, 1.957, 480, 2.046, 490, 2.145,
+    500, 2.250, 510, 2.358, 520, 2.464, 530, 2.568, 540, 2.668, 550, 2.765, 560, 2.860,
+    570, 2.958, 580, 3.059, 590, 3.159, 600, 3.253, 610, 3.345, 620, 3.434, 630, 3.522,
+    640, 3.609, 650, 3.695, 660, 3.778, 670, 3.860, 680, 3.943, 690, 4.025, 700, 4.106,
+    710, 4.186, 720, 4.266, 730, 4.346, 740, 4.424, 750, 4.501, 760, 4.579, 770, 4.657,
+    780, 4.737, 790, 4.814, 800, 4.890, 810, 4.965, 820, 5.039, 830, 5.115, 840, 5.192,
+    850, 5.269, 860, 5.346, 870, 5.423, 880, 5.500, 890, 5.575};
 
 const Float MgO_eta[] = {
     309.950012, 1.798000,   330.613007, 1.785000,   351.118988, 1.776800,   355.549011,
@@ -2588,6 +2578,43 @@ const Float sony_ilce_9_b[] = {
 
 // Spectral Data Definitions
 namespace Spectra {
+DenselySampledSpectrum D(Float temperature, Allocator alloc) {
+    // Convert temperature to CCT
+    Float cct = temperature * 1.4388f / 1.4380f;
+    if (cct < 4000) {
+        // CIE D ill-defined, use blackbody
+        BlackbodySpectrum bb = BlackbodySpectrum(cct);
+        DenselySampledSpectrum blackbody = DenselySampledSpectrum::SampleFunction(
+            [=](Float lambda) { return bb(lambda); });
+
+        return blackbody;
+    }
+
+    // Convert CCT to xy
+    Float x;
+    if (cct <= 7000)
+        x = -4.607f * 1e9f / Pow<3>(cct) + 2.9678f * 1e6f / Sqr(cct) +
+            0.09911f * 1e3f / cct + 0.244063f;
+    else
+        x = -2.0064f * 1e9f / Pow<3>(cct) + 1.9018f * 1e6f / Sqr(cct) +
+            0.24748f * 1e3f / cct + 0.23704f;
+    Float y = -3 * x * x + 2.870f * x - 0.275f;
+
+    // Interpolate D spectrum
+    Float M = 0.0241f + 0.2562f * x - 0.7341f * y;
+    Float M1 = (-1.3515f - 1.7703f * x + 5.9114f * y) / M;
+    Float M2 = (0.0300f - 31.4424f * x + 30.0717f * y) / M;
+
+    pstd::vector<Float> values(nCIES);
+    for (int i = 0; i < nCIES; ++i)
+        values[i] = (CIE_S0[i] + CIE_S1[i] * M1 + CIE_S2[i] * M2) * 0.01;
+
+    PiecewiseLinearSpectrum dpls(CIE_S_lambda, values);
+    return DenselySampledSpectrum(&dpls, alloc);
+}
+}  // namespace Spectra
+
+namespace Spectra {
 
 #ifdef PBRT_BUILD_GPU_RENDERER
 PBRT_GPU DenselySampledSpectrum *xGPU, *yGPU, *zGPU;
@@ -2659,6 +2686,9 @@ void Init(Allocator alloc) {
     SpectrumHandle auk = PiecewiseLinearSpectrum::FromInterleaved(Au_k, false, alloc);
     SpectrumHandle cueta = PiecewiseLinearSpectrum::FromInterleaved(Cu_eta, false, alloc);
     SpectrumHandle cuk = PiecewiseLinearSpectrum::FromInterleaved(Cu_k, false, alloc);
+    SpectrumHandle cuzneta =
+        PiecewiseLinearSpectrum::FromInterleaved(CuZn_eta, false, alloc);
+    SpectrumHandle cuznk = PiecewiseLinearSpectrum::FromInterleaved(CuZn_k, false, alloc);
     SpectrumHandle mgoeta =
         PiecewiseLinearSpectrum::FromInterleaved(MgO_eta, false, alloc);
     SpectrumHandle mgok = PiecewiseLinearSpectrum::FromInterleaved(MgO_k, false, alloc);
@@ -2697,6 +2727,8 @@ void Init(Allocator alloc) {
         {"metal-Au-k", auk},
         {"metal-Cu-eta", cueta},
         {"metal-Cu-k", cuk},
+        {"metal-CuZn-eta", cuzneta},
+        {"metal-CuZn-k", cuznk},
         {"metal-MgO-eta", mgoeta},
         {"metal-MgO-k", mgok},
         {"metal-TiO2-eta", tio2eta},
@@ -2864,42 +2896,5 @@ std::string FindMatchingNamedSpectrum(SpectrumHandle s) {
     }
     return "";
 }
-
-namespace Spectra {
-DenselySampledSpectrum D(Float temperature, Allocator alloc) {
-    // Convert temperature to CCT
-    Float cct = temperature * 1.4388f / 1.4380f;
-    if (cct < 4000) {
-        // CIE D ill-defined, use blackbody
-        BlackbodySpectrum bb = BlackbodySpectrum(cct);
-        DenselySampledSpectrum blackbody = DenselySampledSpectrum::SampleFunction(
-            [=](Float lambda) { return bb(lambda); });
-
-        return blackbody;
-    }
-
-    // Convert CCT to xy
-    Float x;
-    if (cct <= 7000)
-        x = -4.607f * 1e9f / Pow<3>(cct) + 2.9678f * 1e6f / Sqr(cct) +
-            0.09911f * 1e3f / cct + 0.244063f;
-    else
-        x = -2.0064f * 1e9f / Pow<3>(cct) + 1.9018f * 1e6f / Sqr(cct) +
-            0.24748f * 1e3f / cct + 0.23704f;
-    Float y = -3 * x * x + 2.870f * x - 0.275f;
-
-    // Interpolate D spectrum
-    Float M = 0.0241f + 0.2562f * x - 0.7341f * y;
-    Float M1 = (-1.3515f - 1.7703f * x + 5.9114f * y) / M;
-    Float M2 = (0.0300f - 31.4424f * x + 30.0717f * y) / M;
-
-    pstd::vector<Float> values(nCIES);
-    for (int i = 0; i < nCIES; ++i)
-        values[i] = (CIE_S0[i] + CIE_S1[i] * M1 + CIE_S2[i] * M2) * 0.01;
-
-    PiecewiseLinearSpectrum dpls(CIE_S_lambda, values);
-    return DenselySampledSpectrum(&dpls, alloc);
-}
-}  // namespace Spectra
 
 }  // namespace pbrt

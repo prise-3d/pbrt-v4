@@ -139,41 +139,41 @@ class Transform {
         Float zp = (m[2][0] * x + m[2][1] * y) + (m[2][2] * z + m[2][3]);
         Float wp = (m[3][0] * x + m[3][1] * y) + (m[3][2] * z + m[3][3]);
 
-        // Compute absolute error for transformed point
-        Vector3f pOutError;
+        // Compute absolute error for transformed point, _pError_
+        Vector3f pError;
         if (p.IsExact()) {
             // Compute error for transformed exact _p_
-            pOutError.x = gamma(3) * (std::abs(m[0][0] * x) + std::abs(m[0][1] * y) +
-                                      std::abs(m[0][2] * z) + std::abs(m[0][3]));
-            pOutError.y = gamma(3) * (std::abs(m[1][0] * x) + std::abs(m[1][1] * y) +
-                                      std::abs(m[1][2] * z) + std::abs(m[1][3]));
-            pOutError.z = gamma(3) * (std::abs(m[2][0] * x) + std::abs(m[2][1] * y) +
-                                      std::abs(m[2][2] * z) + std::abs(m[2][3]));
+            pError.x = gamma(3) * (std::abs(m[0][0] * x) + std::abs(m[0][1] * y) +
+                                   std::abs(m[0][2] * z) + std::abs(m[0][3]));
+            pError.y = gamma(3) * (std::abs(m[1][0] * x) + std::abs(m[1][1] * y) +
+                                   std::abs(m[1][2] * z) + std::abs(m[1][3]));
+            pError.z = gamma(3) * (std::abs(m[2][0] * x) + std::abs(m[2][1] * y) +
+                                   std::abs(m[2][2] * z) + std::abs(m[2][3]));
 
         } else {
             // Compute error for transformed approximate _p_
             Vector3f pInError = p.Error();
-            pOutError.x = (gamma(3) + 1) * (std::abs(m[0][0]) * pInError.x +
-                                            std::abs(m[0][1]) * pInError.y +
-                                            std::abs(m[0][2]) * pInError.z) +
-                          gamma(3) * (std::abs(m[0][0] * x) + std::abs(m[0][1] * y) +
-                                      std::abs(m[0][2] * z) + std::abs(m[0][3]));
-            pOutError.y = (gamma(3) + 1) * (std::abs(m[1][0]) * pInError.x +
-                                            std::abs(m[1][1]) * pInError.y +
-                                            std::abs(m[1][2]) * pInError.z) +
-                          gamma(3) * (std::abs(m[1][0] * x) + std::abs(m[1][1] * y) +
-                                      std::abs(m[1][2] * z) + std::abs(m[1][3]));
-            pOutError.z = (gamma(3) + 1) * (std::abs(m[2][0]) * pInError.x +
-                                            std::abs(m[2][1]) * pInError.y +
-                                            std::abs(m[2][2]) * pInError.z) +
-                          gamma(3) * (std::abs(m[2][0] * x) + std::abs(m[2][1] * y) +
-                                      std::abs(m[2][2] * z) + std::abs(m[2][3]));
+            pError.x = (gamma(3) + 1) * (std::abs(m[0][0]) * pInError.x +
+                                         std::abs(m[0][1]) * pInError.y +
+                                         std::abs(m[0][2]) * pInError.z) +
+                       gamma(3) * (std::abs(m[0][0] * x) + std::abs(m[0][1] * y) +
+                                   std::abs(m[0][2] * z) + std::abs(m[0][3]));
+            pError.y = (gamma(3) + 1) * (std::abs(m[1][0]) * pInError.x +
+                                         std::abs(m[1][1]) * pInError.y +
+                                         std::abs(m[1][2]) * pInError.z) +
+                       gamma(3) * (std::abs(m[1][0] * x) + std::abs(m[1][1] * y) +
+                                   std::abs(m[1][2] * z) + std::abs(m[1][3]));
+            pError.z = (gamma(3) + 1) * (std::abs(m[2][0]) * pInError.x +
+                                         std::abs(m[2][1]) * pInError.y +
+                                         std::abs(m[2][2]) * pInError.z) +
+                       gamma(3) * (std::abs(m[2][0] * x) + std::abs(m[2][1] * y) +
+                                   std::abs(m[2][2] * z) + std::abs(m[2][3]));
         }
 
         if (wp == 1)
-            return Point3fi(Point3f(xp, yp, zp), pOutError);
+            return Point3fi(Point3f(xp, yp, zp), pError);
         else
-            return Point3fi(Point3f(xp, yp, zp), pOutError) / wp;
+            return Point3fi(Point3f(xp, yp, zp), pError) / wp;
     }
 
     PBRT_CPU_GPU
@@ -251,6 +251,25 @@ inline Transform Rotate(Float theta, const Vector3f &axis) {
     return Rotate(sinTheta, cosTheta, axis);
 }
 
+// Hughes-Moller 1999-ish. (But with |x| computed differently to avoid edge case when it
+// happens to equal |to|.)
+PBRT_CPU_GPU inline Transform RotateFromTo(const Vector3f &from, const Vector3f &to) {
+    Vector3f x = Cross(from, to);
+    if (LengthSquared(x) == 0)
+        return Transform();
+    x = Normalize(x);
+
+    Vector3f u = x - from, v = x - to;
+    SquareMatrix<4> r;
+    for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+            r[i][j] = ((i == j) ? 1 : 0) - 2 / Dot(u, u) * u[i] * u[j] -
+                      2 / Dot(v, v) * v[i] * v[j] +
+                      4 * Dot(u, v) / (Dot(u, u) * Dot(v, v)) * v[i] * u[j];
+        }
+    return Transform(r, Transpose(r));
+}
+
 inline Vector3fi Transform::operator()(const Vector3fi &v) const {
     Float x = Float(v.x), y = Float(v.y), z = Float(v.z);
     Vector3f vOutError;
@@ -322,8 +341,7 @@ inline Ray Transform::operator()(const Ray &r, Float *tMax) const {
     Point3fi o = (*this)(Point3fi(r.o));
     Vector3f d = (*this)(r.d);
     // Offset ray origin to edge of error bounds and compute _tMax_
-    Float lengthSquared = LengthSquared(d);
-    if (lengthSquared > 0) {
+    if (Float lengthSquared = LengthSquared(d); lengthSquared > 0) {
         Float dt = Dot(Abs(d), oError) / lengthSquared;
         o += d * dt;
         if (tMax)
@@ -500,7 +518,7 @@ class AnimatedTransform {
     // AnimatedTransform Private Methods
     PBRT_CPU_GPU
     static void FindZeros(Float c1, Float c2, Float c3, Float c4, Float c5, Float theta,
-                          FloatInterval tInterval, pstd::span<Float> zeros, int *nZeros,
+                          Interval tInterval, pstd::span<Float> zeros, int *nZeros,
                           int depth = 8);
 
     // AnimatedTransform Private Members

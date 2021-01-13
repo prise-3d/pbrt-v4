@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <cstddef>
 
+// GPU Macro Definitions
 #if defined(__CUDA_ARCH__)
 #define PBRT_IS_GPU_CODE
 #endif
@@ -27,6 +28,12 @@
 #define PBRT_CONST const
 #define PBRT_CPU_GPU
 #define PBRT_GPU
+#endif
+
+#ifdef PBRT_IS_WINDOWS
+#define PBRT_GPU_LAMBDA(...) [ =, *this ] PBRT_GPU(__VA_ARGS__) mutable
+#else
+#define PBRT_GPU_LAMBDA(...) [=] PBRT_GPU(__VA_ARGS__)
 #endif
 
 #ifdef PBRT_BUILD_GPU_RENDERER
@@ -129,7 +136,7 @@ class TriangleMesh;
 class RGB;
 class RGBColorSpace;
 class RGBSigmoidPolynomial;
-class RGBSpectrum;
+class RGBIlluminantSpectrum;
 class SampledSpectrum;
 class SampledWavelengths;
 class SpectrumWavelengths;
@@ -141,7 +148,6 @@ class CameraTransform;
 class Image;
 class ParameterDictionary;
 class TextureParameterDictionary;
-enum class BxDFFlags;
 struct ImageMetadata;
 struct MediumInterface;
 struct PBRTOptions;
@@ -151,7 +157,6 @@ class PiecewiseConstant2D;
 class ProgressReporter;
 class RNG;
 struct FileLoc;
-template <typename Float>
 class Interval;
 template <typename T>
 class Array2D;

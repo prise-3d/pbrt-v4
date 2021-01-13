@@ -47,6 +47,7 @@ CameraTransform::CameraTransform(const AnimatedTransform &worldFromCamera) {
     default:
         LOG_FATAL("Unhandled rendering coordinate space");
     }
+    LOG_VERBOSE("World-space position: %s", worldFromRender(Point3f(0, 0, 0)));
     // Compute _renderFromCamera_ transformation
     Transform renderFromWorld = Inverse(worldFromRender);
     Transform rfc[2] = {renderFromWorld * worldFromCamera.startTransform,
@@ -67,8 +68,8 @@ pstd::optional<CameraRayDifferential> CameraHandle::GenerateRayDifferential(
     return Dispatch(gen);
 }
 
-void CameraHandle::ApproximatedPdxy(const SurfaceInteraction &si) const {
-    auto approx = [&](auto ptr) { return ptr->ApproximatedPdxy(si); };
+void CameraHandle::ApproximatedPdxy(SurfaceInteraction &si, int samplesPerPixel) const {
+    auto approx = [&](auto ptr) { return ptr->ApproximatedPdxy(si, samplesPerPixel); };
     return Dispatch(approx);
 }
 
@@ -83,8 +84,7 @@ void CameraHandle::PDF_We(const Ray &ray, Float *pdfPos, Float *pdfDir) const {
     return Dispatch(pdf);
 }
 
-pstd::optional<CameraWiSample> CameraHandle::SampleWi(const Interaction &ref,
-                                                      const Point2f &u,
+pstd::optional<CameraWiSample> CameraHandle::SampleWi(const Interaction &ref, Point2f u,
                                                       SampledWavelengths &lambda) const {
     auto sample = [&](auto ptr) { return ptr->SampleWi(ref, u, lambda); };
     return Dispatch(sample);
@@ -156,24 +156,33 @@ pstd::optional<CameraRayDifferential> CameraBase::GenerateRayDifferential(
     return CameraRayDifferential{rd, cr->weight};
 }
 
-void CameraBase::ApproximatedPdxy(const SurfaceInteraction &si) const {
-    Point3f pc = CameraFromRender(si.p(), si.time);
-    Float dist = Distance(pc, Point3f(0, 0, 0));
+void CameraBase::ApproximatedPdxy(SurfaceInteraction &si, int samplesPerPixel) const {
+    // Compute tangent plane equation for ray differential intersections
+    Point3f pCamera = CameraFromRender(si.p(), si.time);
+    Normal3f nCamera = CameraFromRender(si.n, si.time);
+    Transform DownZFromCamera =
+        RotateFromTo(Normalize(Vector3f(pCamera)), Vector3f(0, 0, 1));
+    Point3f pDownZ = DownZFromCamera(pCamera);
+    Normal3f nDownZ = DownZFromCamera(nCamera);
+    Float d = Dot(nDownZ, Vector3f(pDownZ));
 
-    Frame f = Frame::FromZ(si.n);
-    // ray plane:
-    // (0,0,0) + minPosDifferential + ((0,0,1) + minDirDifferantial)) * t = (x,
-    // x, dist)
-    Float tx = (dist - minPosDifferentialX.z) / (1 + minDirDifferentialX.z);
-    // 0.5 factor to sharpen them up slightly (could be / should be based
-    // on spp?)
-    si.dpdx = .5f * f.FromLocal(minPosDifferentialX + tx * minDirDifferentialX);
-    Float ty = (dist - minPosDifferentialY.z) / (1 + minDirDifferentialY.z);
-    si.dpdy = .5f * f.FromLocal(minPosDifferentialY + ty * minDirDifferentialY);
-}
+    // Find intersection points for approximated camera differential rays
+    Ray xRay(Point3f(0, 0, 0) + minPosDifferentialX,
+             Vector3f(0, 0, 1) + minDirDifferentialX);
+    Float tx = -(Dot(nDownZ, Vector3f(xRay.o)) - d) / Dot(nDownZ, xRay.d);
+    Ray yRay(Point3f(0, 0, 0) + minPosDifferentialY,
+             Vector3f(0, 0, 1) + minDirDifferentialY);
+    Float ty = -(Dot(nDownZ, Vector3f(yRay.o)) - d) / Dot(nDownZ, yRay.d);
+    Point3f px = xRay(tx), py = yRay(ty);
 
-void CameraBase::InitMetadata(ImageMetadata *metadata) const {
-    metadata->cameraFromWorld = cameraTransform.CameraFromWorld(shutterOpen).GetMatrix();
+    // Estimate $\dpdx$ and $\dpdy$ in tangent plane at intersection point
+    Float sppScale = GetOptions().disablePixelJitter
+                         ? 1
+                         : std::max<Float>(.125, 1 / std::sqrt((Float)samplesPerPixel));
+    si.dpdx =
+        sppScale * RenderFromCamera(DownZFromCamera.ApplyInverse(px - pDownZ), si.time);
+    si.dpdy =
+        sppScale * RenderFromCamera(DownZFromCamera.ApplyInverse(py - pDownZ), si.time);
 }
 
 void CameraBase::FindMinimumDifferentials(CameraHandle camera) {
@@ -222,6 +231,10 @@ void CameraBase::FindMinimumDifferentials(CameraHandle camera) {
                 minPosDifferentialY);
     LOG_VERBOSE("Camera min dir differentials: %s, %s", minDirDifferentialX,
                 minDirDifferentialY);
+}
+
+void CameraBase::InitMetadata(ImageMetadata *metadata) const {
+    metadata->cameraFromWorld = cameraTransform.CameraFromWorld(shutterOpen).GetMatrix();
 }
 
 std::string CameraBase::ToString() const {
@@ -352,7 +365,7 @@ pstd::optional<CameraRayDifferential> OrthographicCamera::GenerateRayDifferentia
 
     // Compute ray differentials for _OrthographicCamera_
     if (lensRadius > 0) {
-        // Compute \use{OrthographicCamera} ray differentials accounting for lens
+        // Compute _OrthographicCamera_ ray differentials accounting for lens
         // Sample point on lens
         Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
 
@@ -465,9 +478,9 @@ pstd::optional<CameraRayDifferential> PerspectiveCamera::GenerateRayDifferential
         ray.d = Normalize(pFocus - ray.o);
     }
 
-    // Compute offset rays for \use{PerspectiveCamera} ray differentials
+    // Compute offset rays for _PerspectiveCamera_ ray differentials
     if (lensRadius > 0) {
-        // Compute \use{PerspectiveCamera} ray differentials accounting for lens
+        // Compute _PerspectiveCamera_ ray differentials accounting for lens
         // Sample point on lens
         Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
 
@@ -536,8 +549,8 @@ PerspectiveCamera *PerspectiveCamera::Create(const ParameterDictionary &paramete
             Error(loc, "\"screenwindow\" should have four values");
     }
     Float fov = parameters.GetOneFloat("fov", 90.);
-    return alloc.new_object<PerspectiveCamera>(cameraBaseParameters, screen, lensradius,
-                                               focaldistance, fov);
+    return alloc.new_object<PerspectiveCamera>(cameraBaseParameters, fov, screen,
+                                               lensradius, focaldistance);
 }
 
 SampledSpectrum PerspectiveCamera::We(const Ray &ray, SampledWavelengths &lambda,
@@ -595,7 +608,7 @@ void PerspectiveCamera::PDF_We(const Ray &ray, Float *pdfPos, Float *pdfDir) con
 }
 
 pstd::optional<CameraWiSample> PerspectiveCamera::SampleWi(
-    const Interaction &ref, const Point2f &u, SampledWavelengths &lambda) const {
+    const Interaction &ref, Point2f u, SampledWavelengths &lambda) const {
     // Uniformly sample a lens interaction _lensIntr_
     Point2f pLens = lensRadius * SampleUniformDiskConcentric(u);
     Point3f pLensRender = RenderFromCamera(Point3f(pLens.x, pLens.y, 0), ref.time);
@@ -1361,7 +1374,7 @@ RealisticCamera *RealisticCamera::Create(const ParameterDictionary &parameters,
     };
 
     std::string apertureName = ResolveFilename(parameters.GetOneString("aperture", ""));
-    Image apertureImage;
+    Image apertureImage(alloc);
     if (!apertureName.empty()) {
         // built-in diaphragm shapes
         if (apertureName == "gaussian") {

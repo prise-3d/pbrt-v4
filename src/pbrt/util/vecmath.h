@@ -38,9 +38,8 @@ extern template std::string internal::ToString3(int, int, int);
 
 namespace {
 
-template <typename T>
-PBRT_CPU_GPU inline bool IsNaN(Interval<T> fi) {
-    return pbrt::IsNaN(T(fi));
+PBRT_CPU_GPU inline bool IsNaN(Interval fi) {
+    return pbrt::IsNaN(Float(fi));
 }
 
 // TupleLength Definition
@@ -59,9 +58,9 @@ struct TupleLength<long double> {
     using type = long double;
 };
 
-template <typename T>
-struct TupleLength<Interval<T>> {
-    using type = Interval<typename TupleLength<T>::type>;
+template <>
+struct TupleLength<Interval> {
+    using type = Interval;
 };
 
 }  // anonymous namespace
@@ -78,7 +77,7 @@ class Tuple2 {
     Tuple2(T x, T y) : x(x), y(y) { DCHECK(!HasNaN()); }
     PBRT_CPU_GPU
     bool HasNaN() const { return IsNaN(x) || IsNaN(y); }
-#ifndef NDEBUG
+#ifdef PBRT_DEBUG_BUILD
     // The default versions of these are fine for release builds; for debug
     // we define them so that we can add the Assert checks.
     PBRT_CPU_GPU
@@ -94,7 +93,7 @@ class Tuple2 {
         y = c.y;
         return static_cast<Child<T> &>(*this);
     }
-#endif  // !NDEBUG
+#endif
 
     template <typename U>
     PBRT_CPU_GPU auto operator+(const Child<U> &c) const -> Child<decltype(T{} + U{})> {
@@ -299,7 +298,7 @@ class Tuple3 {
 
     static const int nDimensions = 3;
 
-#ifndef NDEBUG
+#ifdef PBRT_DEBUG_BUILD
     // The default versions of these are fine for release builds; for debug
     // we define them so that we can add the Assert checks.
     PBRT_CPU_GPU
@@ -318,7 +317,7 @@ class Tuple3 {
         z = c.z;
         return static_cast<Child<T> &>(*this);
     }
-#endif  // !NDEBUG
+#endif
 
     template <typename U>
     PBRT_CPU_GPU Child<T> &operator+=(const Child<U> &c) {
@@ -507,49 +506,44 @@ class Vector3 : public Tuple3<Vector3, T> {
     PBRT_CPU_GPU explicit Vector3(const Normal3<U> &n);
 };
 
-// Vector2* definitions
+// Vector2* Definitions
 using Vector2f = Vector2<Float>;
 using Vector2i = Vector2<int>;
 
-// Vector3* definitions
+// Vector3* Definitions
 using Vector3f = Vector3<Float>;
 using Vector3i = Vector3<int>;
 
 // Vector3fi Definition
-class Vector3fi : public Vector3<Interval<Float>> {
+class Vector3fi : public Vector3<Interval> {
   public:
     // Vector3fi Public Methods
-    using Vector3<Interval<Float>>::x;
-    using Vector3<Interval<Float>>::y;
-    using Vector3<Interval<Float>>::z;
-    using Vector3<Interval<Float>>::HasNaN;
-    using Vector3<Interval<Float>>::operator+;
-    using Vector3<Interval<Float>>::operator+=;
-    using Vector3<Interval<Float>>::operator*;
-    using Vector3<Interval<Float>>::operator*=;
+    using Vector3<Interval>::x;
+    using Vector3<Interval>::y;
+    using Vector3<Interval>::z;
+    using Vector3<Interval>::HasNaN;
+    using Vector3<Interval>::operator+;
+    using Vector3<Interval>::operator+=;
+    using Vector3<Interval>::operator*;
+    using Vector3<Interval>::operator*=;
 
     Vector3fi() = default;
     PBRT_CPU_GPU
     Vector3fi(Float x, Float y, Float z)
-        : Vector3<Interval<Float>>(Interval<Float>(x), Interval<Float>(y),
-                                   Interval<Float>(z)) {}
+        : Vector3<Interval>(Interval(x), Interval(y), Interval(z)) {}
     PBRT_CPU_GPU
-    Vector3fi(FloatInterval x, FloatInterval y, FloatInterval z)
-        : Vector3<Interval<Float>>(x, y, z) {}
+    Vector3fi(Interval x, Interval y, Interval z) : Vector3<Interval>(x, y, z) {}
     PBRT_CPU_GPU
     Vector3fi(const Vector3f &p)
-        : Vector3<Interval<Float>>(Interval<Float>(p.x), Interval<Float>(p.y),
-                                   Interval<Float>(p.z)) {}
+        : Vector3<Interval>(Interval(p.x), Interval(p.y), Interval(p.z)) {}
 
-    template <typename F>
-    PBRT_CPU_GPU Vector3fi(const Vector3<Interval<F>> &pfi)
-        : Vector3<Interval<Float>>(pfi) {}
+    PBRT_CPU_GPU Vector3fi(const Vector3<Interval> &pfi) : Vector3<Interval>(pfi) {}
 
     PBRT_CPU_GPU
-    Vector3fi(const Vector3f &p, const Vector3f &e)
-        : Vector3<Interval<Float>>(Interval<Float>::FromValueAndError(p.x, e.x),
-                                   Interval<Float>::FromValueAndError(p.y, e.y),
-                                   Interval<Float>::FromValueAndError(p.z, e.z)) {}
+    Vector3fi(const Vector3f &v, const Vector3f &e)
+        : Vector3<Interval>(Interval::FromValueAndError(v.x, e.x),
+                            Interval::FromValueAndError(v.y, e.y),
+                            Interval::FromValueAndError(v.z, e.z)) {}
 
     PBRT_CPU_GPU
     Vector3f Error() const { return {x.Width() / 2, y.Width() / 2, z.Width() / 2}; }
@@ -700,34 +694,32 @@ using Point3f = Point3<Float>;
 using Point3i = Point3<int>;
 
 // Point3fi Definition
-class Point3fi : public Point3<FloatInterval> {
+class Point3fi : public Point3<Interval> {
   public:
-    using Point3<FloatInterval>::x;
-    using Point3<FloatInterval>::y;
-    using Point3<FloatInterval>::z;
-    using Point3<FloatInterval>::HasNaN;
-    using Point3<FloatInterval>::operator+;
-    using Point3<FloatInterval>::operator*;
-    using Point3<FloatInterval>::operator*=;
+    using Point3<Interval>::x;
+    using Point3<Interval>::y;
+    using Point3<Interval>::z;
+    using Point3<Interval>::HasNaN;
+    using Point3<Interval>::operator+;
+    using Point3<Interval>::operator*;
+    using Point3<Interval>::operator*=;
 
     Point3fi() = default;
     PBRT_CPU_GPU
-    Point3fi(FloatInterval x, FloatInterval y, FloatInterval z)
-        : Point3<FloatInterval>(x, y, z) {}
+    Point3fi(Interval x, Interval y, Interval z) : Point3<Interval>(x, y, z) {}
     PBRT_CPU_GPU
     Point3fi(Float x, Float y, Float z)
-        : Point3<FloatInterval>(FloatInterval(x), FloatInterval(y), FloatInterval(z)) {}
+        : Point3<Interval>(Interval(x), Interval(y), Interval(z)) {}
     PBRT_CPU_GPU
     Point3fi(const Point3f &p)
-        : Point3<FloatInterval>(FloatInterval(p.x), FloatInterval(p.y),
-                                FloatInterval(p.z)) {}
-    template <typename F>
-    PBRT_CPU_GPU Point3fi(const Point3<Interval<F>> &pfi) : Point3<FloatInterval>(pfi) {}
+        : Point3<Interval>(Interval(p.x), Interval(p.y), Interval(p.z)) {}
+    PBRT_CPU_GPU
+    Point3fi(const Point3<Interval> &p) : Point3<Interval>(p) {}
     PBRT_CPU_GPU
     Point3fi(const Point3f &p, const Vector3f &e)
-        : Point3<FloatInterval>(FloatInterval::FromValueAndError(p.x, e.x),
-                                FloatInterval::FromValueAndError(p.y, e.y),
-                                FloatInterval::FromValueAndError(p.z, e.z)) {}
+        : Point3<Interval>(Interval::FromValueAndError(p.x, e.x),
+                           Interval::FromValueAndError(p.y, e.y),
+                           Interval::FromValueAndError(p.z, e.z)) {}
 
     PBRT_CPU_GPU
     Vector3f Error() const { return {x.Width() / 2, y.Width() / 2, z.Width() / 2}; }
@@ -968,6 +960,11 @@ PBRT_CPU_GPU inline Float AngleBetween(const Normal3<T> &a, const Normal3<T> &b)
         return Pi - 2 * SafeASin(Length(a + b) / 2);
     else
         return 2 * SafeASin(Length(b - a) / 2);
+}
+
+template <typename T>
+PBRT_CPU_GPU inline Vector3<T> GramSchmidt(const Vector3<T> &a, const Vector3<T> &b) {
+    return a - Dot(a, b) * b;
 }
 
 template <typename T>
@@ -1642,40 +1639,70 @@ inline Float SphericalPhi(const Vector3f &v) {
     return (p < 0) ? (p + 2 * Pi) : p;
 }
 
-PBRT_CPU_GPU
-inline Float SphericalTriangleArea(const Vector3f &a, const Vector3f &b,
-                                   const Vector3f &c) {
-    // http://math.stackexchange.com/questions/9819/area-of-a-spherical-triangle
-    // Girard's theorem: surface area of a spherical triangle on a unit
-    // sphere is the 'excess angle' alpha+beta+gamma-pi, where
-    // alpha/beta/gamma are the interior angles at the vertices.
-    //
-    // Given three vertices on the sphere, a, b, c, then we can compute,
-    // for example, the angle c->a->b by
-    //
-    // cos theta =  Dot(Cross(c, a), Cross(b, a)) /
-    //              (Length(Cross(c, a)) * Length(Cross(b, a))).
-    //
-    // We only need to do three cross products to evaluate the angles at
-    // all three vertices, though, since we can take advantage of the fact
-    // that Cross(a, b) = -Cross(b, a).
-    Vector3f axb = Cross(a, b), bxc = Cross(b, c), cxa = Cross(c, a);
-    if (LengthSquared(axb) == 0 || LengthSquared(bxc) == 0 || LengthSquared(cxa) == 0)
-        return 0;
-    axb = Normalize(axb);
-    bxc = Normalize(bxc);
-    cxa = Normalize(cxa);
+PBRT_CPU_GPU inline Float CosTheta(const Vector3f &w) {
+    return w.z;
+}
+PBRT_CPU_GPU inline Float Cos2Theta(const Vector3f &w) {
+    return w.z * w.z;
+}
+PBRT_CPU_GPU inline Float AbsCosTheta(const Vector3f &w) {
+    return std::abs(w.z);
+}
 
-    Float alpha = AngleBetween(cxa, -axb);
-    Float beta = AngleBetween(axb, -bxc);
-    Float gamma = AngleBetween(bxc, -cxa);
+PBRT_CPU_GPU inline Float Sin2Theta(const Vector3f &w) {
+    return std::max<Float>(0, 1 - Cos2Theta(w));
+}
+PBRT_CPU_GPU inline Float SinTheta(const Vector3f &w) {
+    return std::sqrt(Sin2Theta(w));
+}
+
+PBRT_CPU_GPU inline Float TanTheta(const Vector3f &w) {
+    return SinTheta(w) / CosTheta(w);
+}
+PBRT_CPU_GPU inline Float Tan2Theta(const Vector3f &w) {
+    return Sin2Theta(w) / Cos2Theta(w);
+}
+
+PBRT_CPU_GPU
+inline Float CosPhi(const Vector3f &w) {
+    Float sinTheta = SinTheta(w);
+    return (sinTheta == 0) ? 1 : Clamp(w.x / sinTheta, -1, 1);
+}
+PBRT_CPU_GPU
+inline Float SinPhi(const Vector3f &w) {
+    Float sinTheta = SinTheta(w);
+    return (sinTheta == 0) ? 0 : Clamp(w.y / sinTheta, -1, 1);
+}
+
+PBRT_CPU_GPU
+inline Float CosDPhi(const Vector3f &wa, const Vector3f &wb) {
+    Float waxy = Sqr(wa.x) + Sqr(wa.y), wbxy = Sqr(wb.x) + Sqr(wb.y);
+    if (waxy == 0 || wbxy == 0)
+        return 1;
+    return Clamp((wa.x * wb.x + wa.y * wb.y) / std::sqrt(waxy * wbxy), -1, 1);
+}
+
+PBRT_CPU_GPU inline Float SphericalTriangleArea(const Vector3f &a, const Vector3f &b,
+                                                const Vector3f &c) {
+    // Compute normalized cross products of all direction pairs
+    Vector3f n_ab = Cross(a, b), n_bc = Cross(b, c), n_ca = Cross(c, a);
+    if (LengthSquared(n_ab) == 0 || LengthSquared(n_bc) == 0 || LengthSquared(n_ca) == 0)
+        return {};
+    n_ab = Normalize(n_ab);
+    n_bc = Normalize(n_bc);
+    n_ca = Normalize(n_ca);
+
+    // Compute angles $\alpha$, $\beta$, and $\gamma$ at spherical triangle vertices
+    Float alpha = AngleBetween(n_ab, -n_ca);
+    Float beta = AngleBetween(n_bc, -n_ab);
+    Float gamma = AngleBetween(n_ca, -n_bc);
 
     return std::abs(alpha + beta + gamma - Pi);
 }
 
-// Note: if it folds over itself, the total spherical area is returned.
-// (i.e. sort of not what we'd want...)
-// https://math.stackexchange.com/questions/1228964/area-of-spherical-polygon
+PBRT_CPU_GPU inline Float SphericalQuadArea(const Vector3f &a, const Vector3f &b,
+                                            const Vector3f &c, const Vector3f &d);
+
 PBRT_CPU_GPU
 inline Float SphericalQuadArea(const Vector3f &a, const Vector3f &b, const Vector3f &c,
                                const Vector3f &d) {
@@ -1698,66 +1725,6 @@ inline Float SphericalQuadArea(const Vector3f &a, const Vector3f &b, const Vecto
 }
 
 PBRT_CPU_GPU
-inline Float CosTheta(const Vector3f &w) {
-    return w.z;
-}
-PBRT_CPU_GPU
-inline Float Cos2Theta(const Vector3f &w) {
-    return w.z * w.z;
-}
-PBRT_CPU_GPU
-inline Float AbsCosTheta(const Vector3f &w) {
-    return std::abs(w.z);
-}
-
-PBRT_CPU_GPU
-inline Float Sin2Theta(const Vector3f &w) {
-    return std::max<Float>(0, 1 - Cos2Theta(w));
-}
-PBRT_CPU_GPU
-inline Float SinTheta(const Vector3f &w) {
-    return std::sqrt(Sin2Theta(w));
-}
-
-PBRT_CPU_GPU
-inline Float TanTheta(const Vector3f &w) {
-    return SinTheta(w) / CosTheta(w);
-}
-PBRT_CPU_GPU
-inline Float Tan2Theta(const Vector3f &w) {
-    return Sin2Theta(w) / Cos2Theta(w);
-}
-
-PBRT_CPU_GPU
-inline Float CosPhi(const Vector3f &w) {
-    Float sinTheta = SinTheta(w);
-    return (sinTheta == 0) ? 1 : Clamp(w.x / sinTheta, -1, 1);
-}
-PBRT_CPU_GPU
-inline Float SinPhi(const Vector3f &w) {
-    Float sinTheta = SinTheta(w);
-    return (sinTheta == 0) ? 0 : Clamp(w.y / sinTheta, -1, 1);
-}
-
-PBRT_CPU_GPU
-inline Float Cos2Phi(const Vector3f &w) {
-    return CosPhi(w) * CosPhi(w);
-}
-PBRT_CPU_GPU
-inline Float Sin2Phi(const Vector3f &w) {
-    return SinPhi(w) * SinPhi(w);
-}
-
-PBRT_CPU_GPU
-inline Float CosDPhi(const Vector3f &wa, const Vector3f &wb) {
-    Float waxy = wa.x * wa.x + wa.y * wa.y;
-    Float wbxy = wb.x * wb.x + wb.y * wb.y;
-    if (waxy == 0 || wbxy == 0)
-        return 1;
-    return Clamp((wa.x * wb.x + wa.y * wb.y) / std::sqrt(waxy * wbxy), -1, 1);
-}
-
-PBRT_CPU_GPU
 inline bool SameHemisphere(const Vector3f &w, const Vector3f &wp) {
     return w.z * wp.z > 0;
 }
@@ -1766,6 +1733,55 @@ PBRT_CPU_GPU
 inline bool SameHemisphere(const Vector3f &w, const Normal3f &wp) {
     return w.z * wp.z > 0;
 }
+
+// OctahedralVector Definition
+class OctahedralVector {
+  public:
+    // OctahedralVector Public Methods
+    OctahedralVector() = default;
+    PBRT_CPU_GPU
+    OctahedralVector(const Vector3f &v) {
+        Float invL1Norm = 1 / (std::abs(v.x) + std::abs(v.y) + std::abs(v.z));
+        if (v.z < 0.0f) {
+            x = Encode((1 - std::abs(v.y * invL1Norm)) * SignNotZero(v.x));
+            y = Encode((1 - std::abs(v.x * invL1Norm)) * SignNotZero(v.y));
+        } else {
+            x = Encode(v.x * invL1Norm);
+            y = Encode(v.y * invL1Norm);
+        }
+    }
+
+    PBRT_CPU_GPU
+    explicit operator Vector3f() const {
+        Vector3f v;
+        v.x = -1 + 2 * (x / 65535.f);
+        v.y = -1 + 2 * (y / 65535.f);
+        v.z = 1 - (std::abs(v.x) + std::abs(v.y));
+        if (v.z < 0) {
+            Float xo = v.x;
+            v.x = (1 - std::abs(v.y)) * SignNotZero(xo);
+            v.y = (1 - std::abs(xo)) * SignNotZero(v.y);
+        }
+        return Normalize(v);
+    }
+
+    std::string ToString() const {
+        return StringPrintf("[ OctahedralVector x: %d y: %d ]", x, y);
+    }
+
+  private:
+    // OctahedralVector Private Methods
+    PBRT_CPU_GPU
+    static Float SignNotZero(Float v) { return (v < 0) ? -1 : 1; }
+
+    PBRT_CPU_GPU
+    static uint16_t Encode(Float f) {
+        return std::round(Clamp((f + 1) / 2, 0, 1) * 65535.f);
+    }
+
+    // OctahedralVector Private Members
+    uint16_t x, y;
+};
 
 // DirectionCone Definition
 class DirectionCone {
@@ -1866,6 +1882,34 @@ class Frame {
         Vector3f x, y;
         CoordinateSystem(z, &x, &y);
         return Frame(x, y, z);
+    }
+
+    PBRT_CPU_GPU
+    static Frame FromX(const Vector3f &x) {
+        Vector3f y, z;
+        CoordinateSystem(x, &y, &z);
+        return Frame(x, y, z);
+    }
+
+    PBRT_CPU_GPU
+    static Frame FromY(const Vector3f &y) {
+        Vector3f x, z;
+        CoordinateSystem(y, &z, &x);
+        return Frame(x, y, z);
+    }
+
+    PBRT_CPU_GPU
+    static Frame FromX(const Normal3f &x) {
+        Vector3f y, z;
+        CoordinateSystem(x, &y, &z);
+        return Frame(Vector3f(x), y, z);
+    }
+
+    PBRT_CPU_GPU
+    static Frame FromY(const Normal3f &y) {
+        Vector3f x, z;
+        CoordinateSystem(y, &z, &x);
+        return Frame(x, Vector3f(y), z);
     }
 
     PBRT_CPU_GPU

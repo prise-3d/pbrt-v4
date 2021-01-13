@@ -11,8 +11,8 @@
 #include <pbrt/util/color.h>
 #include <pbrt/util/colorspace.h>
 #include <pbrt/util/error.h>
+#include <pbrt/util/file.h>
 #include <pbrt/util/memory.h>
-#include <pbrt/util/print.h>
 #include <pbrt/util/sampling.h>
 #include <pbrt/util/scattering.h>
 #include <pbrt/util/stats.h>
@@ -118,9 +118,10 @@ bool GetMediumScatteringProperties(const std::string &name, SpectrumHandle *sigm
 
     for (MeasuredSS &mss : SubsurfaceParameterTable) {
         if (name == mss.name) {
-            *sigma_a = alloc.new_object<RGBSpectrum>(*RGBColorSpace::sRGB, mss.sigma_a);
-            *sigma_s =
-                alloc.new_object<RGBSpectrum>(*RGBColorSpace::sRGB, mss.sigma_prime_s);
+            *sigma_a =
+                alloc.new_object<RGBUnboundedSpectrum>(*RGBColorSpace::sRGB, mss.sigma_a);
+            *sigma_s = alloc.new_object<RGBUnboundedSpectrum>(*RGBColorSpace::sRGB,
+                                                              mss.sigma_prime_s);
             return true;
         }
     }
@@ -151,21 +152,19 @@ HomogeneousMedium *HomogeneousMedium::Create(const ParameterDictionary &paramete
     }
     if (sig_a == nullptr) {
         sig_a =
-            parameters.GetOneSpectrum("sigma_a", nullptr, SpectrumType::General, alloc);
+            parameters.GetOneSpectrum("sigma_a", nullptr, SpectrumType::Unbounded, alloc);
         if (sig_a == nullptr)
-            sig_a = alloc.new_object<RGBSpectrum>(*RGBColorSpace::sRGB,
-                                                  RGB(.0011f, .0024f, .014f));
+            sig_a = alloc.new_object<ConstantSpectrum>(1.f);
     }
     if (sig_s == nullptr) {
         sig_s =
-            parameters.GetOneSpectrum("sigma_s", nullptr, SpectrumType::General, alloc);
+            parameters.GetOneSpectrum("sigma_s", nullptr, SpectrumType::Unbounded, alloc);
         if (sig_s == nullptr)
-            sig_s = alloc.new_object<RGBSpectrum>(*RGBColorSpace::sRGB,
-                                                  RGB(2.55f, 3.21f, 3.77f));
+            sig_s = alloc.new_object<ConstantSpectrum>(1.f);
     }
 
     SpectrumHandle Le =
-        parameters.GetOneSpectrum("Le", nullptr, SpectrumType::General, alloc);
+        parameters.GetOneSpectrum("Le", nullptr, SpectrumType::Illuminant, alloc);
     if (Le == nullptr)
         Le = alloc.new_object<ConstantSpectrum>(0.f);
 
@@ -187,8 +186,9 @@ STAT_MEMORY_COUNTER("Memory/Volume grids", volumeGridBytes);
 // UniformGridMediumProvider Method Definitions
 UniformGridMediumProvider::UniformGridMediumProvider(
     const Bounds3f &bounds, pstd::optional<SampledGrid<Float>> dgrid,
-    pstd::optional<SampledGrid<RGB>> rgbgrid, const RGBColorSpace *colorSpace,
-    SpectrumHandle Le, SampledGrid<Float> Legrid, Allocator alloc)
+    pstd::optional<SampledGrid<RGBUnboundedSpectrum>> rgbgrid,
+    const RGBColorSpace *colorSpace, SpectrumHandle Le, SampledGrid<Float> Legrid,
+    Allocator alloc)
     : bounds(bounds),
       densityGrid(std::move(dgrid)),
       rgbDensityGrid(std::move(rgbgrid)),
@@ -221,14 +221,19 @@ UniformGridMediumProvider *UniformGridMediumProvider::Create(
     const RGBColorSpace *colorSpace = parameters.ColorSpace();
 
     pstd::optional<SampledGrid<Float>> densityGrid;
-    pstd::optional<SampledGrid<RGB>> rgbDensityGrid;
+    pstd::optional<SampledGrid<RGBUnboundedSpectrum>> rgbDensityGrid;
     if (density.size())
         densityGrid = SampledGrid<Float>(density, nx, ny, nz, alloc);
-    else
-        rgbDensityGrid = SampledGrid<RGB>(rgbDensity, nx, ny, nz, alloc);
+    else {
+        std::vector<RGBUnboundedSpectrum> rgbSpectrumDensity;
+        for (RGB rgb : rgbDensity)
+            rgbSpectrumDensity.push_back(RGBUnboundedSpectrum(*colorSpace, rgb));
+        rgbDensityGrid =
+            SampledGrid<RGBUnboundedSpectrum>(rgbSpectrumDensity, nx, ny, nz, alloc);
+    }
 
     SpectrumHandle Le =
-        parameters.GetOneSpectrum("Le", nullptr, SpectrumType::General, alloc);
+        parameters.GetOneSpectrum("Le", nullptr, SpectrumType::Illuminant, alloc);
     if (Le == nullptr)
         Le = alloc.new_object<ConstantSpectrum>(0.f);
 
@@ -263,13 +268,13 @@ CloudMediumProvider *CloudMediumProvider::Create(const ParameterDictionary &para
                                                  const FileLoc *loc, Allocator alloc) {
     Float density = parameters.GetOneFloat("density", 1);
     Float wispiness = parameters.GetOneFloat("wispiness", 1);
-    Float extent = parameters.GetOneFloat("extent", 1);
+    Float frequency = parameters.GetOneFloat("frequency", 5);
 
     Point3f p0 = parameters.GetOnePoint3f("p0", Point3f(0.f, 0.f, 0.f));
     Point3f p1 = parameters.GetOnePoint3f("p1", Point3f(1.f, 1.f, 1.f));
 
     return alloc.new_object<CloudMediumProvider>(Bounds3f(p0, p1), density, wispiness,
-                                                 extent);
+                                                 frequency);
 }
 
 // NanoVDBMediumProvider Method Definitions
@@ -299,7 +304,7 @@ static nanovdb::GridHandle<Buffer> readGrid(const std::string &filename,
 
 NanoVDBMediumProvider *NanoVDBMediumProvider::Create(
     const ParameterDictionary &parameters, const FileLoc *loc, Allocator alloc) {
-    std::string filename = parameters.GetOneString("filename", "");
+    std::string filename = ResolveFilename(parameters.GetOneString("filename", ""));
     if (filename.empty())
         ErrorExit(loc, "Must supply \"filename\" to \"nanovdb\" medium.");
 
@@ -336,18 +341,18 @@ MediumHandle MediumHandle::Create(const std::string &name,
     else if (name == "uniformgrid") {
         UniformGridMediumProvider *provider =
             UniformGridMediumProvider::Create(parameters, loc, alloc);
-        m = GeneralMedium<UniformGridMediumProvider>::Create(
-            provider, parameters, renderFromMedium, loc, alloc);
+        m = CuboidMedium<UniformGridMediumProvider>::Create(provider, parameters,
+                                                            renderFromMedium, loc, alloc);
     } else if (name == "cloud") {
         CloudMediumProvider *provider =
             CloudMediumProvider::Create(parameters, loc, alloc);
-        m = GeneralMedium<CloudMediumProvider>::Create(provider, parameters,
-                                                       renderFromMedium, loc, alloc);
+        m = CuboidMedium<CloudMediumProvider>::Create(provider, parameters,
+                                                      renderFromMedium, loc, alloc);
     } else if (name == "nanovdb") {
         NanoVDBMediumProvider *provider =
             NanoVDBMediumProvider::Create(parameters, loc, alloc);
-        m = GeneralMedium<NanoVDBMediumProvider>::Create(provider, parameters,
-                                                         renderFromMedium, loc, alloc);
+        m = CuboidMedium<NanoVDBMediumProvider>::Create(provider, parameters,
+                                                        renderFromMedium, loc, alloc);
     } else
         ErrorExit(loc, "%s: medium unknown.", name);
 

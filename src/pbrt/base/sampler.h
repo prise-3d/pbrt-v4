@@ -31,21 +31,22 @@ class PMJ02BNSampler;
 class RandomSampler;
 class SobolSampler;
 class StratifiedSampler;
+class ZSobolSampler;
 class MLTSampler;
 class DebugMLTSampler;
 
 // SamplerHandle Definition
 class SamplerHandle
-    : public TaggedPointer<HaltonSampler, PaddedSobolSampler, PMJ02BNSampler,
-                           RandomSampler, SobolSampler, StratifiedSampler, MLTSampler,
-                           DebugMLTSampler> {
+    : public TaggedPointer<RandomSampler, StratifiedSampler, HaltonSampler,
+                           PaddedSobolSampler, SobolSampler, ZSobolSampler,
+                           PMJ02BNSampler, MLTSampler, DebugMLTSampler> {
   public:
     // Sampler Interface
     using TaggedPointer::TaggedPointer;
 
     static SamplerHandle Create(const std::string &name,
                                 const ParameterDictionary &parameters,
-                                const Point2i &fullResolution, const FileLoc *loc,
+                                Point2i fullResolution, const FileLoc *loc,
                                 Allocator alloc);
 
     PBRT_CPU_GPU inline int SamplesPerPixel() const;
@@ -55,6 +56,8 @@ class SamplerHandle
 
     PBRT_CPU_GPU inline Float Get1D();
     PBRT_CPU_GPU inline Point2f Get2D();
+
+    PBRT_CPU_GPU inline Point2f GetPixel2D();
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc = {});
 

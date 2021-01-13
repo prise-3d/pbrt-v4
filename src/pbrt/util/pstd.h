@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <cassert>
 #include <cstddef>
+#include <cstring>
 #include <initializer_list>
 #include <iterator>
 #include <list>
@@ -27,6 +28,20 @@ PBRT_CPU_GPU inline void swap(T &a, T &b) {
     T tmp = std::move(a);
     a = std::move(b);
     b = std::move(tmp);
+}
+
+template <class To, class From>
+PBRT_CPU_GPU typename std::enable_if_t<sizeof(To) == sizeof(From) &&
+                                           std::is_trivially_copyable_v<From> &&
+                                           std::is_trivially_copyable_v<To>,
+                                       To>
+bit_cast(const From &src) noexcept {
+    static_assert(std::is_trivially_constructible_v<To>,
+                  "This implementation requires the destination type to be trivially "
+                  "constructible");
+    To dst;
+    std::memcpy(&dst, &src, sizeof(To));
+    return dst;
 }
 
 template <typename T, int N>
@@ -449,9 +464,13 @@ class memory_resource {
   public:
     virtual ~memory_resource();
     void *allocate(size_t bytes, size_t alignment = max_align) {
+        if (bytes == 0)
+            return nullptr;
         return do_allocate(bytes, alignment);
     }
     void deallocate(void *p, size_t bytes, size_t alignment = max_align) {
+        if (!p)
+            return;
         return do_deallocate(p, bytes, alignment);
     }
     bool is_equal(const memory_resource &other) const noexcept {
@@ -516,10 +535,6 @@ class monotonic_buffer_resource : public memory_resource {
             upstreamResource->deallocate(block.ptr, block.size);
         usedBlocks.clear();
 
-        for (const auto &block : availableBlocks)
-            upstreamResource->deallocate(block.ptr, block.size);
-        availableBlocks.clear();
-
         upstreamResource->deallocate(currentBlock.ptr, currentBlock.size);
         currentBlock = MemoryBlock();
     }
@@ -547,21 +562,9 @@ class monotonic_buffer_resource : public memory_resource {
                 currentBlock = {};
             }
 
-            // Get new block of memory for _MemoryArena_
-
-            // Try to get memory block from _availableBlocks_
-            for (auto iter = availableBlocks.begin(); iter != availableBlocks.end();
-                 ++iter) {
-                if (bytes <= iter->size) {
-                    currentBlock = std::move(*iter);
-                    availableBlocks.erase(iter);
-                    goto success;
-                }
-            }
             currentBlock = {
                 upstreamResource->allocate(blockSize, alignof(std::max_align_t)),
                 blockSize};
-        success:
             currentBlockPos = 0;
         }
 
@@ -589,7 +592,7 @@ class monotonic_buffer_resource : public memory_resource {
     MemoryBlock currentBlock;
     size_t currentBlockPos = 0;
     // TODO: should use the memory_resource for this list's allocations...
-    std::list<MemoryBlock> usedBlocks, availableBlocks;
+    std::list<MemoryBlock> usedBlocks;
 };
 
 template <class Tp = std::byte>

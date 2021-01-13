@@ -40,7 +40,15 @@ enum class ParameterType {
 };
 
 // SpectrumType Definition
-enum class SpectrumType { Reflectance, General };
+enum class SpectrumType { Albedo, Unbounded, Illuminant };
+
+// NamedTextures Definition
+struct NamedTextures {
+    std::map<std::string, FloatTextureHandle> floatTextures;
+    std::map<std::string, SpectrumTextureHandle> albedoSpectrumTextures;
+    std::map<std::string, SpectrumTextureHandle> unboundedSpectrumTextures;
+    std::map<std::string, SpectrumTextureHandle> illuminantSpectrumTextures;
+};
 
 template <ParameterType PT>
 struct ParameterTypeTraits {};
@@ -90,6 +98,7 @@ class ParameterDictionary {
     Float GetOneFloat(const std::string &name, Float def) const;
     int GetOneInt(const std::string &name, int def) const;
     bool GetOneBool(const std::string &name, bool def) const;
+
     Point2f GetOnePoint2f(const std::string &name, const Point2f &def) const;
     Vector2f GetOneVector2f(const std::string &name, const Vector2f &def) const;
     Point3f GetOnePoint3f(const std::string &name, const Point3f &def) const;
@@ -103,6 +112,7 @@ class ParameterDictionary {
     std::vector<Float> GetFloatArray(const std::string &name) const;
     std::vector<int> GetIntArray(const std::string &name) const;
     std::vector<uint8_t> GetBoolArray(const std::string &name) const;
+
     std::vector<Point2f> GetPoint2fArray(const std::string &name) const;
     std::vector<Vector2f> GetVector2fArray(const std::string &name) const;
     std::vector<Point3f> GetPoint3fArray(const std::string &name) const;
@@ -149,10 +159,8 @@ class ParameterDictionary {
 class TextureParameterDictionary {
   public:
     // TextureParameterDictionary Public Methods
-    TextureParameterDictionary(
-        const ParameterDictionary *dict,
-        const std::map<std::string, FloatTextureHandle> *floatTextures,
-        const std::map<std::string, SpectrumTextureHandle> *spectrumTextures);
+    TextureParameterDictionary(const ParameterDictionary *dict,
+                               const NamedTextures *textures);
 
     operator const ParameterDictionary &() const { return *dict; }
 
@@ -199,8 +207,7 @@ class TextureParameterDictionary {
   private:
     // TextureParameterDictionary Private Members
     const ParameterDictionary *dict;
-    const std::map<std::string, FloatTextureHandle> *floatTextures;
-    const std::map<std::string, SpectrumTextureHandle> *spectrumTextures;
+    const NamedTextures *textures;
 };
 
 }  // namespace pbrt

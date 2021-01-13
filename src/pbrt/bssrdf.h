@@ -23,14 +23,15 @@ namespace pbrt {
 
 // BSSRDFSample Definition
 struct BSSRDFSample {
-    SampledSpectrum S;
+    SampledSpectrum Sp;
     Float pdf;
-    BSDF bsdf;
+    BSDF Sw;
     Vector3f wo;
 };
 
 // SubsurfaceInteraction Definition
 struct SubsurfaceInteraction {
+    // SubsurfaceInteraction Public Methods
     SubsurfaceInteraction() = default;
     PBRT_CPU_GPU
     SubsurfaceInteraction(const SurfaceInteraction &si)
@@ -58,11 +59,10 @@ struct SubsurfaceInteraction {
     PBRT_CPU_GPU
     Point3f p() const { return Point3f(pi); }
 
+    // SubsurfaceInteraction Public Members
     Point3fi pi;
-    Normal3f n;
-    Vector3f dpdu, dpdv;
-    Normal3f ns;
-    Vector3f dpdus, dpdvs;
+    Normal3f n, ns;
+    Vector3f dpdu, dpdv, dpdus, dpdvs;
 };
 
 // BSSRDF Function Declarations
@@ -94,43 +94,29 @@ struct BSSRDFTable {
 
 // BSSRDFProbeSegment Definition
 struct BSSRDFProbeSegment {
+    // BSSRDFProbeSegment Public Methods
     BSSRDFProbeSegment() = default;
     PBRT_CPU_GPU
-    BSSRDFProbeSegment(const Point3f &p0, const Point3f &p1, Float time)
-        : p0(p0), p1(p1), time(time), valid(true) {}
-    PBRT_CPU_GPU operator bool() const { return valid; }
+    BSSRDFProbeSegment(const Point3f &p0, const Point3f &p1) : p0(p0), p1(p1) {}
 
     Point3f p0, p1;
-    Float time;
-    bool valid = false;
 };
 
 // TabulatedBSSRDF Definition
 class TabulatedBSSRDF {
   public:
-    using BxDF = BSSRDFAdapter;
+    // TabulatedBSSRDF Type Definitions
+    using BxDF = NormalizedFresnelBxDF;
+
     // TabulatedBSSRDF Public Methods
     TabulatedBSSRDF() = default;
     PBRT_CPU_GPU
-    TabulatedBSSRDF(const Point3f &po, const Vector3f &dpdu, const Normal3f &ns,
-                    const Vector3f &wo, Float time, Float eta,
+    TabulatedBSSRDF(const Point3f &po, const Normal3f &ns, const Vector3f &wo, Float eta,
                     const SampledSpectrum &sigma_a, const SampledSpectrum &sigma_s,
                     const BSSRDFTable *table)
-        : po(po),
-          wo(wo),
-          eta(eta),
-          ns(ns),
-          ss(Normalize(dpdu)),
-          ts(Cross(ns, ss)),
-          table(table) {
+        : po(po), wo(wo), eta(eta), ns(ns), table(table) {
         sigma_t = sigma_a + sigma_s;
         rho = SafeDiv(sigma_s, sigma_t);
-    }
-
-    PBRT_CPU_GPU
-    SampledSpectrum S(const Point3f &p, const Vector3f &wi) {
-        Float Ft = FrDielectric(CosTheta(wo), eta);
-        return (1 - Ft) * Sp(p) * Sw(wi);
     }
 
     PBRT_CPU_GPU
@@ -153,15 +139,13 @@ class TabulatedBSSRDF {
 
             // Set BSSRDF value _Sr[ch]_ using tensor spline interpolation
             Float sr = 0;
-            for (int i = 0; i < 4; ++i) {
+            for (int i = 0; i < 4; ++i)
                 for (int j = 0; j < 4; ++j) {
                     // Accumulate contribution of $(i,j)$ table sample
-                    Float weight = rhoWeights[i] * radiusWeights[j];
-                    if (weight != 0)
+                    if (Float weight = rhoWeights[i] * radiusWeights[j]; weight != 0)
                         sr +=
                             weight * table->EvalProfile(rhoOffset + i, radiusOffset + j);
                 }
-            }
             // Cancel marginal PDF factor from tabulated BSSRDF profile
             if (rOptical != 0)
                 sr /= 2 * Pi * rOptical;
@@ -175,71 +159,12 @@ class TabulatedBSSRDF {
     }
 
     PBRT_CPU_GPU
-    SampledSpectrum Sw(const Vector3f &w) const {
-        Float c = 1 - 2 * FresnelMoment1(1 / eta);
-        return SampledSpectrum((1 - FrDielectric(CosTheta(w), eta)) / (c * Pi));
-    }
-
-    std::string ToString() const;
-
-    PBRT_CPU_GPU
-    BSSRDFProbeSegment Sample(Float u1, const Point2f &u2) const {
-        // Choose projection axis for BSSRDF sampling
-        Vector3f vx, vy, vz;
-        switch (SampleDiscrete({0.5, .25, .25}, u1, nullptr, &u1)) {
-        case 0:
-            vx = ss;
-            vy = ts;
-            vz = Vector3f(ns);
-            break;
-        case 1:
-            // Prepare for sampling rays with respect to _ss_
-            vx = ts;
-            vy = Vector3f(ns);
-            vz = ss;
-            break;
-
-        case 2:
-            // Prepare for sampling rays with respect to _ts_
-            vx = Vector3f(ns);
-            vy = ss;
-            vz = ts;
-            break;
-
-        default:
-            LOG_FATAL("Unexpected value returned from SampleDiscrete");
-        }
-
-        // Choose spectral channel for BSSRDF sampling
-        int ch = std::min<int>(u1 * NSpectrumSamples, NSpectrumSamples - 1);
-        u1 = std::min(u1 * NSpectrumSamples - ch, OneMinusEpsilon);
-
-        // Sample BSSRDF profile in polar coordinates
-        Float r = Sample_Sr(ch, u2[0]);
-        if (r < 0)
-            return {};
-        Float phi = 2 * Pi * u2[1];
-
-        // Compute BSSRDF profile bounds and intersection height
-        Float rMax = Sample_Sr(ch, 0.999f);
-        if (r >= rMax)
-            return {};
-        Float l = 2 * std::sqrt(rMax * rMax - r * r);
-
-        // Return BSSRDF sampling ray segment
-        Point3f pStart =
-            po + r * (vx * std::cos(phi) + vy * std::sin(phi)) - l * vz * 0.5f;
-        Point3f pTarget = pStart + l * vz;
-        return BSSRDFProbeSegment{pStart, pTarget, time};
-    }
-
-    PBRT_CPU_GPU
-    Float Sample_Sr(int ch, Float u) const {
-        if (sigma_t[ch] == 0)
+    Float SampleSr(Float u) const {
+        if (sigma_t[0] == 0)
             return -1;
         return SampleCatmullRom2D(table->rhoSamples, table->radiusSamples, table->profile,
-                                  table->profileCDF, rho[ch], u) /
-               sigma_t[ch];
+                                  table->profileCDF, rho[0], u) /
+               sigma_t[0];
     }
 
     PBRT_CPU_GPU
@@ -253,21 +178,19 @@ class TabulatedBSSRDF {
         if (!CatmullRomWeights(table->rhoSamples, rho[ch], &rhoOffset, rhoWeights) ||
             !CatmullRomWeights(table->radiusSamples, rOptical, &radiusOffset,
                                radiusWeights))
-            return 0.f;
+            return 0;
 
         // Return BSSRDF profile density for channel _ch_
         Float sr = 0, rhoEff = 0;
-        for (int i = 0; i < 4; ++i) {
-            if (rhoWeights[i] == 0)
-                continue;
-            rhoEff += table->rhoEff[rhoOffset + i] * rhoWeights[i];
-            for (int j = 0; j < 4; ++j) {
-                if (radiusWeights[j] == 0)
-                    continue;
-                sr += table->EvalProfile(rhoOffset + i, radiusOffset + j) *
-                      rhoWeights[i] * radiusWeights[j];
+        for (int i = 0; i < 4; ++i)
+            if (rhoWeights[i] != 0) {
+                // Update _rhoEff_ and _sr_ for channel _ch_
+                rhoEff += table->rhoEff[rhoOffset + i] * rhoWeights[i];
+                for (int j = 0; j < 4; ++j)
+                    if (radiusWeights[j] != 0)
+                        sr += table->EvalProfile(rhoOffset + i, radiusOffset + j) *
+                              rhoWeights[i] * radiusWeights[j];
             }
-        }
         // Cancel marginal PDF factor from tabulated BSSRDF profile
         if (rOptical != 0)
             sr /= 2 * Pi * rOptical;
@@ -276,17 +199,48 @@ class TabulatedBSSRDF {
     }
 
     PBRT_CPU_GPU
+    pstd::optional<BSSRDFProbeSegment> SampleSp(Float u1, Point2f u2) const {
+        // Choose projection axis for BSSRDF sampling
+        Frame f;
+        if (u1 < 0.25f)
+            f = Frame::FromX(ns);
+        else if (u1 < 0.5f)
+            f = Frame::FromY(ns);
+        else
+            f = Frame::FromZ(ns);
+
+        // Sample BSSRDF profile in polar coordinates
+        Float r = SampleSr(u2[0]);
+        if (r < 0)
+            return {};
+        Float phi = 2 * Pi * u2[1];
+
+        // Compute BSSRDF profile bounds and intersection height
+        Float r_max = SampleSr(0.999f);
+        if (r >= r_max)
+            return {};
+        Float l = 2 * std::sqrt(Sqr(r_max) - Sqr(r));
+
+        // Return BSSRDF sampling ray segment
+        Point3f pStart =
+            po + r * (f.x * std::cos(phi) + f.y * std::sin(phi)) - l * f.z * 0.5f;
+        Point3f pTarget = pStart + l * f.z;
+        return BSSRDFProbeSegment{pStart, pTarget};
+    }
+
+    PBRT_CPU_GPU
     Float PDF_Sp(const Point3f &pi, const Normal3f &ni) const {
         // Express $\pti-\pto$ and $\bold{n}_i$ with respect to local coordinates at
         // $\pto$
         Vector3f d = pi - po;
-        Vector3f dLocal(Dot(ss, d), Dot(ts, d), Dot(ns, d));
-        Normal3f nLocal(Dot(ss, ni), Dot(ts, ni), Dot(ns, ni));
+        Frame f = Frame::FromZ(ns);
+        Vector3f dLocal = f.ToLocal(d);
+        Normal3f nLocal = f.ToLocal(ni);
 
         // Compute BSSRDF profile radius under projection along each axis
-        Float rProj[3] = {std::sqrt(dLocal.y * dLocal.y + dLocal.z * dLocal.z),
-                          std::sqrt(dLocal.z * dLocal.z + dLocal.x * dLocal.x),
-                          std::sqrt(dLocal.x * dLocal.x + dLocal.y * dLocal.y)};
+        Float rProj[3] = {std::sqrt(Sqr(dLocal.y) + Sqr(dLocal.z)),
+                          std::sqrt(Sqr(dLocal.z) + Sqr(dLocal.x)),
+                          std::sqrt(Sqr(dLocal.x) + Sqr(dLocal.y))};
 
         // Return combined probability from all BSSRDF sampling strategies
         Float pdf = 0, axisProb[3] = {.25f, .25f, .5f};
@@ -300,31 +254,32 @@ class TabulatedBSSRDF {
 
     PBRT_CPU_GPU
     BSSRDFSample ProbeIntersectionToSample(const SubsurfaceInteraction &si,
-                                           BSSRDFAdapter *bxdf) const {
-        *bxdf = BSSRDFAdapter(eta);
+                                           NormalizedFresnelBxDF *bxdf) const {
+        *bxdf = NormalizedFresnelBxDF(eta);
         Vector3f wo = Vector3f(si.ns);
-        BSDF bsdf(wo, si.n, si.ns, si.dpdus, bxdf, eta);
+        BSDF bsdf(wo, si.n, si.ns, si.dpdus, bxdf);
         return BSSRDFSample{Sp(si.p()), PDF_Sp(si.p(), si.n), bsdf, wo};
     }
 
+    std::string ToString() const;
+
   private:
     friend class SOA<TabulatedBSSRDF>;
-    // TabulatedBSSRDF Private Data
+    // TabulatedBSSRDF Private Members
     Point3f po;
     Vector3f wo;
-    Float time;
     Normal3f ns;
-    Vector3f ss, ts;
     Float eta;
-    const BSSRDFTable *table;
     SampledSpectrum sigma_t, rho;
+    const BSSRDFTable *table;
 };
 
 // BSSRDF Inline Functions
-PBRT_CPU_GPU
-inline void SubsurfaceFromDiffuse(const BSSRDFTable &t, const SampledSpectrum &rhoEff,
-                                  const SampledSpectrum &mfp, SampledSpectrum *sigma_a,
-                                  SampledSpectrum *sigma_s) {
+PBRT_CPU_GPU inline void SubsurfaceFromDiffuse(const BSSRDFTable &t,
+                                               const SampledSpectrum &rhoEff,
+                                               const SampledSpectrum &mfp,
+                                               SampledSpectrum *sigma_a,
+                                               SampledSpectrum *sigma_s) {
     for (int c = 0; c < NSpectrumSamples; ++c) {
         Float rho = InvertCatmullRom(t.rhoSamples, t.rhoEff, rhoEff[c]);
         (*sigma_s)[c] = rho / mfp[c];
@@ -332,13 +287,9 @@ inline void SubsurfaceFromDiffuse(const BSSRDFTable &t, const SampledSpectrum &r
     }
 }
 
-inline SampledSpectrum BSSRDFHandle::S(const Point3f &p, const Vector3f &wi) {
-    auto s = [&](auto ptr) { return ptr->S(p, wi); };
-    return Dispatch(s);
-}
-
-inline BSSRDFProbeSegment BSSRDFHandle::Sample(Float u1, const Point2f &u2) const {
-    auto sample = [&](auto ptr) { return ptr->Sample(u1, u2); };
+inline pstd::optional<BSSRDFProbeSegment> BSSRDFHandle::SampleSp(Float u1,
+                                                                 Point2f u2) const {
+    auto sample = [&](auto ptr) { return ptr->SampleSp(u1, u2); };
     return Dispatch(sample);
 }
 

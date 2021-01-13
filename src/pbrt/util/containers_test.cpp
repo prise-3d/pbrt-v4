@@ -107,3 +107,54 @@ TEST(HashMap, Randoms) {
     EXPECT_EQ(nVisited, 10000);
     EXPECT_EQ(0, values.size());
 }
+
+TEST(TypePack, Index) {
+    using Pack = TypePack<int, float, double>;
+
+    // Extra parens so EXPECT_TRUE doesn't get confused by the comma
+    EXPECT_EQ(0, (IndexOf<int, Pack>::count));
+    EXPECT_EQ(1, (IndexOf<float, Pack>::count));
+    EXPECT_EQ(2, (IndexOf<double, Pack>::count));
+}
+
+TEST(TypePack, HasType) {
+    using Pack = TypePack<signed int, float, double>;
+
+    // Extra parens so EXPECT_TRUE doesn't get confused by the comma
+    EXPECT_TRUE((HasType<int, Pack>::value));
+    EXPECT_TRUE((HasType<float, Pack>::value));
+    EXPECT_TRUE((HasType<double, Pack>::value));
+
+    EXPECT_FALSE((HasType<char, Pack>::value));
+    EXPECT_FALSE((HasType<unsigned int, Pack>::value));
+}
+
+TEST(TypePack, TakeRemove) {
+    using Pack = TypePack<signed int, float, double>;
+
+    static_assert(std::is_same_v<TypePack<signed int>, typename TakeFirstN<1, Pack>::type>);
+    static_assert(std::is_same_v<TypePack<float>, typename TakeFirstN<1, typename RemoveFirstN<1, Pack>::type>::type>);
+    static_assert(std::is_same_v<TypePack<double>, typename TakeFirstN<1, typename RemoveFirstN<2, Pack>::type>::type>);
+}
+
+template <typename T> struct Set { };
+
+TEST(TypePack, Map) {
+    using SetPack = typename MapType<Set, TypePack<signed int, float, double>>::type;
+
+    static_assert(std::is_same_v<TypePack<Set<signed int>>,
+                  typename TakeFirstN<1, SetPack>::type>);
+    static_assert(std::is_same_v<TypePack<Set<float>>,
+                  typename TakeFirstN<1, typename RemoveFirstN<1, SetPack>::type>::type>);
+    static_assert(std::is_same_v<TypePack<Set<double>>,
+                  typename TakeFirstN<1, typename RemoveFirstN<2, SetPack>::type>::type>);
+}
+
+TEST(TypePack, Filter) {
+    using Pack = TypePack<signed int, float, double>;
+    using FilteredPack = typename FilterTypes<std::is_floating_point, Pack>::type;
+
+    static_assert(std::is_same_v<TypePack<float>, typename TakeFirstN<1, FilteredPack>::type>);
+    static_assert(std::is_same_v<TypePack<double>,
+                  typename TakeFirstN<1, typename RemoveFirstN<1, FilteredPack>::type>::type>);
+}

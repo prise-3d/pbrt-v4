@@ -6,6 +6,7 @@
 
 namespace pbrt {
 
+// BSSRDF Utility Functions
 Float FresnelMoment1(Float eta) {
     Float eta2 = eta * eta, eta3 = eta2 * eta, eta4 = eta3 * eta, eta5 = eta4 * eta;
     if (eta < 1)
@@ -27,15 +28,6 @@ Float FresnelMoment2(Float eta) {
                404.557f * eta - 189.519f * eta2 + 54.9327f * eta3 - 9.00603f * eta4 +
                0.63942f * eta5;
     }
-}
-
-std::string FresnelConductor::ToString() const {
-    return StringPrintf("[ FresnelConductor eta: %s k: %s ]", eta, k);
-}
-
-std::string FresnelDielectric::ToString() const {
-    return StringPrintf("[ FrenselDielectric eta: %f opaque: %s ]", eta,
-                        opaque ? "true" : "false");
 }
 
 std::string TrowbridgeReitzDistribution::ToString() const {

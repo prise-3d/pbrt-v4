@@ -421,6 +421,8 @@ static ParsedParameterVector parseParameters(
         if (formatting) {  // close enough: upgrade...
             if (param->type == "point")
                 param->type = "point3";
+            if (param->type == "vector")
+                param->type = "vector3";
             if (param->type == "color")
                 param->type = "rgb";
         }
@@ -530,9 +532,13 @@ static ParsedParameterVector parseParameters(
 }
 
 static void parse(SceneRepresentation *scene, std::unique_ptr<Tokenizer> t) {
-    bool formatting = dynamic_cast<FormattingScene *>(scene) != nullptr;
+    FormattingScene *formattingScene = dynamic_cast<FormattingScene *>(scene);
+    bool formatting = formattingScene != nullptr;
+
     TrackedMemoryResource memoryResource;
     Allocator alloc(&memoryResource);
+
+    static bool warnedTransformBeginEndDeprecated = false;
 
     std::vector<std::unique_ptr<Tokenizer>> fileStack;
     fileStack.push_back(std::move(t));
@@ -801,11 +807,23 @@ static void parse(SceneRepresentation *scene, std::unique_ptr<Tokenizer> t) {
             break;
 
         case 'T':
-            if (tok->token == "TransformBegin")
-                scene->TransformBegin(tok->loc);
-            else if (tok->token == "TransformEnd")
-                scene->TransformEnd(tok->loc);
-            else if (tok->token == "Transform") {
+            if (tok->token == "TransformBegin") {
+                if (formattingScene)
+                    formattingScene->TransformBegin(tok->loc);
+                else {
+                    if (!warnedTransformBeginEndDeprecated) {
+                        Warning(&tok->loc, "TransformBegin/End are deprecated and should "
+                                           "be replaced with AttributeBegin/End");
+                        warnedTransformBeginEndDeprecated = true;
+                    }
+                    scene->AttributeBegin(tok->loc);
+                }
+            } else if (tok->token == "TransformEnd") {
+                if (formattingScene)
+                    formattingScene->TransformEnd(tok->loc);
+                else
+                    scene->AttributeEnd(tok->loc);
+            } else if (tok->token == "Transform") {
                 if (nextToken(TokenRequired)->token != "[")
                     syntaxError(*tok);
                 Float m[16];

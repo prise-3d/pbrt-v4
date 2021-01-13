@@ -1,6 +1,10 @@
 
 cmake_minimum_required (VERSION 3.12)
 
+if (MSVC)
+  add_definitions(/D _CRT_SECURE_NO_WARNINGS)
+endif ()
+
 ###########################################################################
 # stb
 
@@ -40,6 +44,8 @@ set (ZLIB_LIBRARIES ${ZLIB_LIBARIES} PARENT_SCOPE)
 
 ###########################################################################
 # OpenEXR
+
+SET (CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
 set (ILMBASE_NAMESPACE_VERSIONING OFF CACHE BOOL " " FORCE)
 set (OPENEXR_NAMESPACE_VERSIONING OFF CACHE BOOL " " FORCE)
@@ -100,3 +106,10 @@ set_property (TARGET double-conversion cctest PROPERTY FOLDER "ext")
 # nanovdb
 
 set (NANOVDB_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/openvdb/nanovdb PARENT_SCOPE)
+
+###########################################################################
+# FLIP
+
+set (FLIP_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/flip PARENT_SCOPE)
+
+add_library (flip_lib STATIC ${CMAKE_CURRENT_SOURCE_DIR}/flip/flip.cpp)

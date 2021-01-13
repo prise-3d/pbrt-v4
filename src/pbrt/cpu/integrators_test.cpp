@@ -5,7 +5,7 @@
 #include <gtest/gtest.h>
 
 #include <pbrt/cameras.h>
-#include <pbrt/cpu/accelerators.h>
+#include <pbrt/cpu/aggregates.h>
 #include <pbrt/cpu/integrators.h>
 #include <pbrt/filters.h>
 #include <pbrt/lights.h>
@@ -79,13 +79,13 @@ std::vector<TestScene> GetScenes() {
         SpectrumTextureHandle Kd = alloc.new_object<SpectrumConstantTexture>(&cs);
         FloatTextureHandle sigma = alloc.new_object<FloatConstantTexture>(0.);
         // FIXME: here and below, Materials leak...
-        MaterialHandle material = new DiffuseMaterial(Kd, sigma, nullptr);
+        MaterialHandle material = new DiffuseMaterial(Kd, sigma, nullptr, nullptr);
 
         MediumInterface mediumInterface;
         std::vector<PrimitiveHandle> prims;
         prims.push_back(PrimitiveHandle(
             new GeometricPrimitive(sphere, material, nullptr, mediumInterface)));
-        PrimitiveHandle bvh(new BVHAccel(std::move(prims)));
+        PrimitiveHandle bvh(new BVHAggregate(std::move(prims)));
 
         // We have to do this little dance here to make sure the spectrum is
         // properly normalized (this is usually all handled inside *Light::Create())
@@ -106,13 +106,13 @@ std::vector<TestScene> GetScenes() {
         static ConstantSpectrum cs(0.5);
         SpectrumTextureHandle Kd = alloc.new_object<SpectrumConstantTexture>(&cs);
         FloatTextureHandle sigma = alloc.new_object<FloatConstantTexture>(0.);
-        const MaterialHandle material = new DiffuseMaterial(Kd, sigma, nullptr);
+        const MaterialHandle material = new DiffuseMaterial(Kd, sigma, nullptr, nullptr);
 
         MediumInterface mediumInterface;
         std::vector<PrimitiveHandle> prims;
         prims.push_back(PrimitiveHandle(
             new GeometricPrimitive(sphere, material, nullptr, mediumInterface)));
-        PrimitiveHandle bvh(new BVHAccel(std::move(prims)));
+        PrimitiveHandle bvh(new BVHAggregate(std::move(prims)));
 
         // We have to do this little dance here to make sure the spectrum is
         // properly normalized (this is usually all handled inside *Light::Create())
@@ -136,7 +136,7 @@ std::vector<TestScene> GetScenes() {
         static ConstantSpectrum cs(0.5);
         SpectrumTextureHandle Kd = alloc.new_object<SpectrumConstantTexture>(&cs);
         FloatTextureHandle sigma = alloc.new_object<FloatConstantTexture>(0.);
-        const MaterialHandle material = new DiffuseMaterial(Kd, sigma, nullptr);
+        const MaterialHandle material = new DiffuseMaterial(Kd, sigma, nullptr, nullptr);
 
         // We have to do this little dance here to make sure the spectrum is
         // properly normalized (this is usually all handled inside *Light::Create())
@@ -153,7 +153,7 @@ std::vector<TestScene> GetScenes() {
         std::vector<PrimitiveHandle> prims;
         prims.push_back(PrimitiveHandle(
             new GeometricPrimitive(sphere, material, lights.back(), mediumInterface)));
-        PrimitiveHandle bvh(new BVHAccel(std::move(prims)));
+        PrimitiveHandle bvh(new BVHAggregate(std::move(prims)));
 
         scenes.push_back({bvh, lights, "Sphere, Kd = 0.5, Le = 0.5", 1.0});
     }
@@ -185,7 +185,7 @@ std::vector<TestScene> GetScenes() {
         std::vector<PrimitiveHandle> prims;
         prims.push_back(PrimitiveHandle(new GeometricPrimitive(
             sphere, material, nullptr, mediumInterface)));
-        PrimitiveHandle bvh(new BVHAccel(std::move(prims)));
+        PrimitiveHandle bvh(new BVHAggregate(std::move(prims)));
 
         static ConstantSpectrum I(3. * Pi);
         std::vector<LightHandle> lights;
@@ -228,7 +228,7 @@ std::vector<TestScene> GetScenes() {
     std::vector<std::shared_ptr<Primitive>> prims;
     prims.push_back(PrimitiveHandle(new GeometricPrimitive(
         sphere, material, areaLight, mediumInterface)));
-    PrimitiveHandle bvh(new BVHAccel(std::move(prims)));
+    PrimitiveHandle bvh(new BVHAggregate(std::move(prims)));
 
     std::vector<std::shared_ptr<Light>> lights;
     lights.push_back(std::move(areaLight));
@@ -245,16 +245,15 @@ std::vector<std::pair<SamplerHandle, std::string>> GetSamplers(
     std::vector<std::pair<SamplerHandle, std::string>> samplers;
 
     samplers.push_back(std::make_pair(new HaltonSampler(256, resolution), "Halton 256"));
-    samplers.push_back(std::make_pair(new PaddedSobolSampler(256, RandomizeStrategy::Xor),
+    samplers.push_back(std::make_pair(new PaddedSobolSampler(256, RandomizeStrategy::PermuteDigits),
                                       "Padded Sobol 256"));
+    samplers.push_back(std::make_pair(new ZSobolSampler(256, Point2i(16, 16), RandomizeStrategy::PermuteDigits),
+                                      "Z Sobol 256"));
     samplers.push_back(
         std::make_pair(new SobolSampler(256, resolution, RandomizeStrategy::None),
                        "Sobol 256 Not Randomized"));
-    samplers.push_back(std::make_pair(
-        new SobolSampler(256, resolution, RandomizeStrategy::CranleyPatterson),
-        "Sobol 256 Cranley Patterson Randomization"));
     samplers.push_back(
-        std::make_pair(new SobolSampler(256, resolution, RandomizeStrategy::Xor),
+        std::make_pair(new SobolSampler(256, resolution, RandomizeStrategy::PermuteDigits),
                        "Sobol 256 XOR Scramble"));
     samplers.push_back(
         std::make_pair(new SobolSampler(256, resolution, RandomizeStrategy::Owen),
@@ -277,12 +276,12 @@ std::vector<TestIntegrator> GetIntegrators() {
         // Path tracing integrators
         for (auto &sampler : GetSamplers(resolution)) {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
-            PerspectiveCamera *camera = new PerspectiveCamera(cbp,
-                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10., 45);
+            PerspectiveCamera *camera = new PerspectiveCamera(cbp, 45,
+                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10.);
 
             const FilmHandle filmp = camera->GetFilm();
             Integrator *integrator = new PathIntegrator(8, camera, sampler.first,
@@ -295,9 +294,9 @@ std::vector<TestIntegrator> GetIntegrators() {
 
         for (auto &sampler : GetSamplers(resolution)) {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
             OrthographicCamera *camera = new OrthographicCamera(cbp,
                 Bounds2f(Point2f(-.1, -.1), Point2f(.1, .1)), 0., 10.);
@@ -314,12 +313,12 @@ std::vector<TestIntegrator> GetIntegrators() {
         // Volume path tracing integrators
         for (auto &sampler : GetSamplers(resolution)) {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
-            PerspectiveCamera *camera = new PerspectiveCamera(cbp,
-                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10., 45);
+            PerspectiveCamera *camera = new PerspectiveCamera(cbp, 45,
+                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10.);
             const FilmHandle filmp = camera->GetFilm();
 
             Integrator *integrator = new VolPathIntegrator(8, camera, sampler.first,
@@ -331,9 +330,9 @@ std::vector<TestIntegrator> GetIntegrators() {
         }
         for (auto &sampler : GetSamplers(resolution)) {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
             OrthographicCamera *camera = new OrthographicCamera(cbp,
                 Bounds2f(Point2f(-.1, -.1), Point2f(.1, .1)), 0., 10.);
@@ -350,12 +349,12 @@ std::vector<TestIntegrator> GetIntegrators() {
         // Simple path (perspective only, still sample light and BSDFs). Yolo
         for (auto &sampler : GetSamplers(resolution)) {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
-            PerspectiveCamera *camera = new PerspectiveCamera(cbp,
-                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10., 45);
+            PerspectiveCamera *camera = new PerspectiveCamera(cbp, 45,
+                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10.);
 
             const FilmHandle filmp = camera->GetFilm();
             Integrator *integrator = new SimplePathIntegrator(
@@ -369,17 +368,17 @@ std::vector<TestIntegrator> GetIntegrators() {
         // BDPT
         for (auto &sampler : GetSamplers(resolution)) {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
-            PerspectiveCamera *camera = new PerspectiveCamera(cbp,
-                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10., 45);
+            PerspectiveCamera *camera = new PerspectiveCamera(cbp, 45,
+                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10.);
             const FilmHandle filmp = camera->GetFilm();
 
             Integrator *integrator =
                 new BDPTIntegrator(camera, sampler.first, scene.aggregate, scene.lights,
-                                   6, false, false, "power", false);
+                                   6, false, false, false);
             integrators.push_back({integrator, filmp,
                                    "BDPT, depth 8, Perspective, " + sampler.second +
                                        ", " + scene.description,
@@ -389,12 +388,12 @@ std::vector<TestIntegrator> GetIntegrators() {
         // MLT
         {
             FilterHandle filter = new BoxFilter(Vector2f(0.5, 0.5));
-            RGBFilm *film = new RGBFilm(Sensor::CreateDefault(), resolution,
-                                        Bounds2i(Point2i(0, 0), resolution), filter, 1.,
-                                        inTestDir("test.exr"), 1., RGBColorSpace::sRGB);
+            FilmBaseParameters fp(resolution, Bounds2i(Point2i(0, 0), resolution),
+                                  filter, 1., PixelSensor::CreateDefault(), inTestDir("test.exr"));
+            RGBFilm *film = new RGBFilm(fp, RGBColorSpace::sRGB);
             CameraBaseParameters cbp(CameraTransform(identity), film, nullptr, {}, nullptr);
-            PerspectiveCamera *camera = new PerspectiveCamera(cbp,
-                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10., 45);
+            PerspectiveCamera *camera = new PerspectiveCamera(cbp, 45,
+                Bounds2f(Point2f(-1, -1), Point2f(1, 1)), 0., 10.);
             const FilmHandle filmp = camera->GetFilm();
 
             Integrator *integrator =

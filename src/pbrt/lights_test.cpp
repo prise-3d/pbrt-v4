@@ -33,7 +33,7 @@ TEST(SpotLight, Power) {
     double phiSampled = 0;
     for (int i = 0; i < nSamples; ++i) {
         Vector3f w = SampleUniformSphere({RadicalInverse(0, i), RadicalInverse(1, i)});
-        phiSampled += (I.Sample(lambda) * light.Falloff(w))[0];
+        phiSampled += light.I(w, lambda)[0];
     }
     phiSampled /= (nSamples * UniformSpherePDF());
 
@@ -83,14 +83,13 @@ static Image MakeLightImage(Point2i res) {
 }
 
 TEST(GoniometricLight, Power) {
-    Image image = MakeLightImage({512, 256});
+    Image image = MakeLightImage({256, 256});
     image = image.SelectChannels(image.GetChannelDesc({"R"}));
 
     SampledWavelengths lambda = SampledWavelengths::SampleUniform(0.5);
     static ConstantSpectrum I(10.);
     Transform id;
-    GoniometricLight light(id, MediumInterface(), &I, 1.f, std::move(image),
-                           RGBColorSpace::sRGB, Allocator());
+    GoniometricLight light(id, MediumInterface(), &I, 1.f, std::move(image), Allocator());
 
     SampledSpectrum phi = light.Phi(lambda);
 
@@ -99,11 +98,11 @@ TEST(GoniometricLight, Power) {
     double phiSampled = 0;
     for (Point2f u : Hammersley2D(nSamples)) {
         Vector3f w = SampleUniformSphere(u);
-        phiSampled += light.Scale(w, lambda)[0];
+        phiSampled += light.I(w, lambda).Average();
     }
     phiSampled /= (nSamples * UniformSpherePDF());
 
-    EXPECT_LT(std::abs(phiSampled - phi[0]), 1e-3)
+    EXPECT_LT(std::abs(phiSampled - phi[0]), 3e-3)
         << " qmc: " << phiSampled << ", closed-form: " << phi[0];
 }
 
@@ -127,13 +126,12 @@ static void testPhiVsSampled(LightHandle light, SampledWavelengths &lambda) {
 }
 
 TEST(GoniometricLight, Sampling) {
-    Image image = MakeLightImage({512, 256});
+    Image image = MakeLightImage({256, 256});
     image = image.SelectChannels(image.GetChannelDesc({"R"}));
 
     static ConstantSpectrum I(10.);
     static Transform id;
-    GoniometricLight light(id, MediumInterface(), &I, 1.f, std::move(image),
-                           RGBColorSpace::sRGB, Allocator());
+    GoniometricLight light(id, MediumInterface(), &I, 1.f, std::move(image), Allocator());
     SampledWavelengths lambda = SampledWavelengths::SampleUniform(0.5);
     testPhiVsSampled(LightHandle(&light), lambda);
 }
@@ -153,7 +151,7 @@ TEST(ProjectionLight, Power) {
         double phiSampled = 0;
         for (Point2f u : Hammersley2D(nSamples)) {
             Vector3f w = SampleUniformSphere(u);
-            phiSampled += light.Projection(w, lambda)[0];
+            phiSampled += light.I(w, lambda)[0];
         }
         phiSampled /= (nSamples * UniformSpherePDF());
 
@@ -177,8 +175,8 @@ TEST(ProjectionLight, Sampling) {
 
 TEST(LightBounds, Basics) {
     LightBounds bounds(Bounds3f(Point3f(0, 0, 0), Point3f(.1, .1, .01)),
-                       Vector3f(0, 0, 1), 1.f /* phi */, 0.f /* theta_o: normal spread */,
-                       Pi / 2 /* theta_e: falloff given visible normal */,
+                       Vector3f(0, 0, 1), 1.f /* phi */, std::cos(0.f) /* theta_o: normal spread */,
+                       std::cos(Pi / 2) /* theta_e: falloff given visible normal */,
                        false /* two-sided */);
 
     // Positive importance for point on the emissive side

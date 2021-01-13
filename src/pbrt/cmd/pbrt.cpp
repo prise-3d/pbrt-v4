@@ -81,6 +81,8 @@ Rendering options:
   --seed <n>                   Set random number generator seed. Default: 0.
   --spp <n>                    Override number of pixel samples specified in scene
                                description file.
+  --write-partial-images       Periodically write the current image to disk, rather
+                               than waiting for the end of rendering. Default: disabled.
 
 Logging options:
   --log-level <level>          Log messages at or above this level, where <level>
@@ -129,31 +131,36 @@ int main(int argc, char *argv[]) {
             exit(1);
         };
 
-        std::string cropWindow, pixelBounds, pixel;
+        std::string cropWindow, pixelBounds, pixel, pixelMaterial;
         if (ParseArg(&argv, "cropwindow", &cropWindow, onError)) {
-            pstd::optional<std::vector<Float>> c = SplitStringToFloats(cropWindow, ',');
-            if (!c || c->size() != 4) {
+            std::vector<Float> c = SplitStringToFloats(cropWindow, ',');
+            if (c.size() != 4) {
                 usage("Didn't find four values after --cropwindow");
                 return 1;
             }
-            options.cropWindow =
-                Bounds2f(Point2f((*c)[0], (*c)[2]), Point2f((*c)[1], (*c)[3]));
+            options.cropWindow = Bounds2f(Point2f(c[0], c[2]), Point2f(c[1], c[3]));
         } else if (ParseArg(&argv, "pixel", &pixel, onError)) {
-            pstd::optional<std::vector<int>> p = SplitStringToInts(pixel, ',');
-            if (!p || p->size() != 2) {
+            std::vector<int> p = SplitStringToInts(pixel, ',');
+            if (p.size() != 2) {
                 usage("Didn't find two values after --pixel");
                 return 1;
             }
             options.pixelBounds =
-                Bounds2i(Point2i((*p)[0], (*p)[1]), Point2i((*p)[0] + 1, (*p)[1] + 1));
+                Bounds2i(Point2i(p[0], p[1]), Point2i(p[0] + 1, p[1] + 1));
         } else if (ParseArg(&argv, "pixelbounds", &pixelBounds, onError)) {
-            pstd::optional<std::vector<int>> p = SplitStringToInts(pixelBounds, ',');
-            if (!p || p->size() != 4) {
+            std::vector<int> p = SplitStringToInts(pixelBounds, ',');
+            if (p.size() != 4) {
                 usage("Didn't find four integer values after --pixelbounds");
                 return 1;
             }
-            options.pixelBounds =
-                Bounds2i(Point2i((*p)[0], (*p)[2]), Point2i((*p)[1], (*p)[3]));
+            options.pixelBounds = Bounds2i(Point2i(p[0], p[2]), Point2i(p[1], p[3]));
+        } else if (ParseArg(&argv, "pixelmaterial", &pixelMaterial, onError)) {
+            std::vector<int> p = SplitStringToInts(pixelMaterial, ',');
+            if (p.size() != 2) {
+                usage("Didn't find two values after --pixelmaterial");
+                return 1;
+            }
+            options.pixelMaterial = Point2i(p[0], p[1]);
         } else if (
 #ifdef PBRT_BUILD_GPU_RENDERER
             ParseArg(&argv, "gpu", &options.useGPU, onError) ||
@@ -185,6 +192,8 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "pakmon", &options.pakmon, onError) ||
             ParseArg(&argv, "independent", &options.independent, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
+            ParseArg(&argv, "write-partial-images", &options.writePartialImages,
+                     onError) ||
             ParseArg(&argv, "upgrade", &options.upgrade, onError)) {
             // success
         } else if ((strcmp(*argv, "--help") == 0) || (strcmp(*argv, "-help") == 0) ||
@@ -200,10 +209,10 @@ int main(int argc, char *argv[]) {
     // Print welcome banner
     if (!options.quiet && !format && !toPly && !options.upgrade) {
         printf("pbrt version 4 (built %s at %s)\n", __DATE__, __TIME__);
-#ifndef NDEBUG
+#ifdef PBRT_DEBUG_BUILD
         LOG_VERBOSE("Running debug build");
         printf("*** DEBUG BUILD ***\n");
-#endif  // !NDEBUG
+#endif
         printf("Copyright (c)1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.\n");
         printf("The source code to pbrt (but *not* the book contents) is covered "
                "by the Apache 2.0 License.\n");
@@ -226,6 +235,11 @@ int main(int argc, char *argv[]) {
                   "--mse-reference-out");
     if (!options.mseReferenceOutput.empty() && options.mseReferenceImage.empty())
         ErrorExit("Must provide MSE reference image via --mse-reference-image");
+
+    if (options.pixelMaterial && options.useGPU) {
+        Warning("Disabling --use-gpu since --pixelmaterial was specified.");
+        options.useGPU = false;
+    }
 
     options.logLevel = LogLevelFromString(logLevel);
 

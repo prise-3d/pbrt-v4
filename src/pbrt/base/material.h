@@ -33,36 +33,41 @@ class MixMaterial;
 
 // MaterialHandle Definition
 class MaterialHandle
-    : public TaggedPointer<CoatedDiffuseMaterial, CoatedConductorMaterial,
-                           ConductorMaterial, DielectricMaterial, DiffuseMaterial,
-                           DiffuseTransmissionMaterial, HairMaterial, MeasuredMaterial,
-                           SubsurfaceMaterial, ThinDielectricMaterial, MixMaterial> {
+    : public TaggedPointer<  // Material Types
+          CoatedDiffuseMaterial, CoatedConductorMaterial, ConductorMaterial,
+          DielectricMaterial, DiffuseMaterial, DiffuseTransmissionMaterial, HairMaterial,
+          MeasuredMaterial, SubsurfaceMaterial, ThinDielectricMaterial, MixMaterial
+
+          > {
   public:
     // Material Interface
     using TaggedPointer::TaggedPointer;
 
     static MaterialHandle Create(
         const std::string &name, const TextureParameterDictionary &parameters,
+        Image *normalMap,
         /*const */ std::map<std::string, MaterialHandle> &namedMaterials,
         const FileLoc *loc, Allocator alloc);
 
     std::string ToString() const;
 
     template <typename TextureEvaluator>
-    PBRT_CPU_GPU inline bool CanEvaluateTextures(TextureEvaluator texEval) const;
-
-    template <typename TextureEvaluator>
     PBRT_CPU_GPU inline BSDF GetBSDF(TextureEvaluator texEval, MaterialEvalContext ctx,
                                      SampledWavelengths &lambda,
-                                     ScratchBuffer &scratchBuffer) const;
+                                     ScratchBuffer &buf) const;
 
     template <typename TextureEvaluator>
     PBRT_CPU_GPU inline BSSRDFHandle GetBSSRDF(TextureEvaluator texEval,
                                                MaterialEvalContext ctx,
                                                SampledWavelengths &lambda,
-                                               ScratchBuffer &scratchBuffer) const;
+                                               ScratchBuffer &buf) const;
+
+    template <typename TextureEvaluator>
+    PBRT_CPU_GPU inline bool CanEvaluateTextures(TextureEvaluator texEval) const;
 
     PBRT_CPU_GPU inline FloatTextureHandle GetDisplacement() const;
+
+    PBRT_CPU_GPU inline const Image *GetNormalMap() const;
 
     PBRT_CPU_GPU inline bool IsTransparent() const;
     PBRT_CPU_GPU inline bool HasSubsurfaceScattering() const;

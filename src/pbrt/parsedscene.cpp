@@ -50,79 +50,33 @@ std::string ParsedScene::ToString() const {
                         instanceDefinitions, lights, shapes, instances);
 }
 
-// ParsedScene::GraphicsState Definition
-struct ParsedScene::GraphicsState {
-    // Graphics State Methods
-    GraphicsState();
-
-    // Graphics State
-    std::string currentInsideMedium, currentOutsideMedium;
-
-    int currentMaterialIndex = 0;
-    std::string currentMaterialName;
-
-    std::string areaLightName;
-    ParameterDictionary areaLightParams;
-    FileLoc areaLightLoc;
-
-    const RGBColorSpace *colorSpace = RGBColorSpace::sRGB;
-
-    bool reverseOrientation = false;
-
-    ParsedParameterVector shapeAttributes;
-    ParsedParameterVector lightAttributes;
-    ParsedParameterVector materialAttributes;
-    ParsedParameterVector mediumAttributes;
-    ParsedParameterVector textureAttributes;
-};
-
 ParsedScene::GraphicsState::GraphicsState() {
     currentMaterialIndex = 0;
 }
 
 // API State Macros
-#define VERIFY_INITIALIZED(func)                             \
-    if (currentApiState == APIState::Uninitialized) {        \
-        Error(&loc,                                          \
-              "pbrtInit() must be before calling \"%s()\". " \
-              "Ignoring.",                                   \
-              func);                                         \
-        return;                                              \
-    } else /* swallow trailing semicolon */
-
-#define FOR_ACTIVE_TRANSFORMS(expr)           \
-    for (int i = 0; i < MaxTransforms; ++i)   \
-        if (activeTransformBits & (1 << i)) { \
-            expr                              \
-        }
-
-#define WARN_IF_ANIMATED_TRANSFORM(func)                                 \
-    do {                                                                 \
-        if (curTransform.IsAnimated())                                   \
-            Warning(&loc,                                                \
-                    "Animated transformations set; ignoring for \"%s\" " \
-                    "and using the start transform only",                \
-                    func);                                               \
-    } while (false) /* swallow trailing semicolon */
-
-#define VERIFY_OPTIONS(func)                               \
-    VERIFY_INITIALIZED(func);                              \
-    if (currentApiState == APIState::WorldBlock) {         \
-        Error(&loc,                                        \
-              "Options cannot be set inside world block; " \
-              "\"%s\" not allowed.  Ignoring.",            \
-              func);                                       \
-        return;                                            \
-    } else /* swallow trailing semicolon */
-#define VERIFY_WORLD(func)                                     \
-    VERIFY_INITIALIZED(func);                                  \
-    if (currentApiState == APIState::OptionsBlock) {           \
-        Error(&loc,                                            \
-              "Scene description must be inside world block; " \
-              "\"%s\" not allowed. Ignoring.",                 \
-              func);                                           \
+#define VERIFY_OPTIONS(func)                                   \
+    if (currentBlock == BlockState::WorldBlock) {              \
+        ErrorExit(&loc,                                        \
+                  "Options cannot be set inside world block; " \
+                  "\"%s\" is not allowed.",                    \
+                  func);                                       \
         return;                                                \
     } else /* swallow trailing semicolon */
+#define VERIFY_WORLD(func)                                         \
+    if (currentBlock == BlockState::OptionsBlock) {                \
+        ErrorExit(&loc,                                            \
+                  "Scene description must be inside world block; " \
+                  "\"%s\" is not allowed.",                        \
+                  func);                                           \
+        return;                                                    \
+    } else /* swallow trailing semicolon */
+
+#define FOR_ACTIVE_TRANSFORMS(expr)                         \
+    for (int i = 0; i < MaxTransforms; ++i)                 \
+        if (graphicsState.activeTransformBits & (1 << i)) { \
+            expr                                            \
+        }
 
 STAT_MEMORY_COUNTER("Memory/TransformCache", transformCacheBytes);
 STAT_PERCENT("Geometry/TransformCache hits", nTransformCacheHits, nTransformCacheLookups);
@@ -158,68 +112,73 @@ STAT_COUNTER("Scene/Object instances used", nObjectInstancesUsed);
 
 // ParsedScene Method Definitions
 ParsedScene::ParsedScene() {
-    // Allocate _graphicsState_
-    graphicsState = new GraphicsState;
-
     // Set scene defaults
+    camera.name = "perspective";
+    sampler.name = "pmj02bn";
+    filter.name = "gaussian";
+    integrator.name = "volpath";
+
     ParameterDictionary dict({}, RGBColorSpace::sRGB);
     materials.push_back(SceneEntity("diffuse", dict, {}));
-
     accelerator.name = "bvh";
-
-    camera.name = "perspective";
-
-    sampler.name = "pmj02bn";
-
-    filter.name = "gaussian";
-
     film.name = "rgb";
     film.parameters = ParameterDictionary({}, RGBColorSpace::sRGB);
+}
 
-    integrator.name = "volpath";
+void ParsedScene::ReverseOrientation(FileLoc loc) {
+    VERIFY_WORLD("ReverseOrientation");
+    graphicsState.reverseOrientation = !graphicsState.reverseOrientation;
+}
+
+void ParsedScene::ColorSpace(const std::string &name, FileLoc loc) {
+    if (const RGBColorSpace *cs = RGBColorSpace::GetNamed(name))
+        graphicsState.colorSpace = cs;
+    else
+        Error(&loc, "%s: color space unknown", name);
 }
 
 void ParsedScene::Identity(FileLoc loc) {
-    VERIFY_INITIALIZED("Identity");
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] = pbrt::Transform();)
+    FOR_ACTIVE_TRANSFORMS(graphicsState.ctm[i] = pbrt::Transform();)
 }
 
 void ParsedScene::Translate(Float dx, Float dy, Float dz, FileLoc loc) {
-    VERIFY_INITIALIZED("Translate");
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] =
-                              curTransform[i] * pbrt::Translate(Vector3f(dx, dy, dz));)
+    FOR_ACTIVE_TRANSFORMS(graphicsState.ctm[i] = graphicsState.ctm[i] *
+                                                 pbrt::Translate(Vector3f(dx, dy, dz));)
 }
 
 void ParsedScene::CoordinateSystem(const std::string &name, FileLoc loc) {
-    VERIFY_INITIALIZED("CoordinateSystem");
-    namedCoordinateSystems[name] = curTransform;
+    namedCoordinateSystems[name] = graphicsState.ctm;
 }
 
 void ParsedScene::CoordSysTransform(const std::string &name, FileLoc loc) {
-    VERIFY_INITIALIZED("CoordSysTransform");
     if (namedCoordinateSystems.find(name) != namedCoordinateSystems.end())
-        curTransform = namedCoordinateSystems[name];
+        graphicsState.ctm = namedCoordinateSystems[name];
     else
         Warning(&loc, "Couldn't find named coordinate system \"%s\"", name);
 }
 
-void ParsedScene::WorldBegin(FileLoc loc) {
-    VERIFY_OPTIONS("WorldBegin");
-    currentApiState = APIState::WorldBlock;
-    for (int i = 0; i < MaxTransforms; ++i)
-        curTransform[i] = pbrt::Transform();
-    activeTransformBits = AllTransformsBits;
-    namedCoordinateSystems["world"] = curTransform;
+void ParsedScene::Camera(const std::string &name, ParsedParameterVector params,
+                         FileLoc loc) {
+    ParameterDictionary dict(std::move(params), graphicsState.colorSpace);
+
+    VERIFY_OPTIONS("Camera");
+
+    TransformSet cameraFromWorld = graphicsState.ctm;
+    TransformSet worldFromCamera = Inverse(graphicsState.ctm);
+    namedCoordinateSystems["camera"] = Inverse(cameraFromWorld);
+
+    CameraTransform cameraTransform(
+        AnimatedTransform(worldFromCamera[0], graphicsState.transformStartTime,
+                          worldFromCamera[1], graphicsState.transformEndTime));
+    renderFromWorld = cameraTransform.RenderFromWorld();
+
+    camera = CameraSceneEntity(name, std::move(dict), loc, cameraTransform,
+                               graphicsState.currentOutsideMedium);
 }
 
 void ParsedScene::AttributeBegin(FileLoc loc) {
     VERIFY_WORLD("AttributeBegin");
-
-    pushedGraphicsStates.push_back(*graphicsState);
-
-    pushedTransforms.push_back(curTransform);
-    pushedActiveTransformBits.push_back(activeTransformBits);
-
+    pushedGraphicsStates.push_back(graphicsState);
     pushStack.push_back(std::make_pair('a', loc));
 }
 
@@ -229,21 +188,11 @@ void ParsedScene::AttributeEnd(FileLoc loc) {
         Error(&loc, "Unmatched AttributeEnd encountered. Ignoring it.");
         return;
     }
-
     // NOTE: must keep the following consistent with code in ObjectEnd
-    *graphicsState = std::move(pushedGraphicsStates.back());
+    graphicsState = std::move(pushedGraphicsStates.back());
     pushedGraphicsStates.pop_back();
 
-    curTransform = pushedTransforms.back();
-    pushedTransforms.pop_back();
-    activeTransformBits = pushedActiveTransformBits.back();
-    pushedActiveTransformBits.pop_back();
-
-    if (pushStack.back().first == 't')
-        ErrorExitDeferred(
-            &loc, "Mismatched nesting: open TransformBegin from %s at AttributeEnd",
-            pushStack.back().second);
-    else if (pushStack.back().first == 'o')
+    if (pushStack.back().first == 'o')
         ErrorExitDeferred(&loc,
                           "Mismatched nesting: open ObjectBegin from %s at AttributeEnd",
                           pushStack.back().second);
@@ -254,19 +203,17 @@ void ParsedScene::AttributeEnd(FileLoc loc) {
 
 void ParsedScene::Attribute(const std::string &target, ParsedParameterVector attrib,
                             FileLoc loc) {
-    VERIFY_INITIALIZED("Attribute");
-
     ParsedParameterVector *currentAttributes = nullptr;
     if (target == "shape") {
-        currentAttributes = &graphicsState->shapeAttributes;
+        currentAttributes = &graphicsState.shapeAttributes;
     } else if (target == "light") {
-        currentAttributes = &graphicsState->lightAttributes;
+        currentAttributes = &graphicsState.lightAttributes;
     } else if (target == "material") {
-        currentAttributes = &graphicsState->materialAttributes;
+        currentAttributes = &graphicsState.materialAttributes;
     } else if (target == "medium") {
-        currentAttributes = &graphicsState->mediumAttributes;
+        currentAttributes = &graphicsState.mediumAttributes;
     } else if (target == "texture") {
-        currentAttributes = &graphicsState->textureAttributes;
+        currentAttributes = &graphicsState.textureAttributes;
     } else {
         ErrorExitDeferred(
             &loc,
@@ -280,80 +227,84 @@ void ParsedScene::Attribute(const std::string &target, ParsedParameterVector att
     // with the parameters...
     for (ParsedParameter *p : attrib) {
         p->mayBeUnused = true;
-        p->colorSpace = graphicsState->colorSpace;
+        p->colorSpace = graphicsState.colorSpace;
         currentAttributes->push_back(p);
     }
+}
+
+void ParsedScene::WorldBegin(FileLoc loc) {
+    VERIFY_OPTIONS("WorldBegin");
+    currentBlock = BlockState::WorldBlock;
+    for (int i = 0; i < MaxTransforms; ++i)
+        graphicsState.ctm[i] = pbrt::Transform();
+    graphicsState.activeTransformBits = AllTransformsBits;
+    namedCoordinateSystems["world"] = graphicsState.ctm;
 }
 
 void ParsedScene::LightSource(const std::string &name, ParsedParameterVector params,
                               FileLoc loc) {
     VERIFY_WORLD("LightSource");
-    ParameterDictionary dict(std::move(params), graphicsState->lightAttributes,
-                             graphicsState->colorSpace);
-    AnimatedTransform renderFromLight(GetCTM(0), transformStartTime, GetCTM(1),
-                                      transformEndTime);
-
-    lights.push_back(LightSceneEntity(name, std::move(dict), loc, renderFromLight,
-                                      graphicsState->currentOutsideMedium));
+    ParameterDictionary dict(std::move(params), graphicsState.lightAttributes,
+                             graphicsState.colorSpace);
+    lights.push_back(LightSceneEntity(name, std::move(dict), loc, RenderFromObject(),
+                                      graphicsState.currentOutsideMedium));
 }
 
 void ParsedScene::Shape(const std::string &name, ParsedParameterVector params,
                         FileLoc loc) {
     VERIFY_WORLD("Shape");
 
-    ParameterDictionary dict(std::move(params), graphicsState->shapeAttributes,
-                             graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.shapeAttributes,
+                             graphicsState.colorSpace);
 
     int areaLightIndex = -1;
-    if (!graphicsState->areaLightName.empty()) {
-        areaLights.push_back(SceneEntity(graphicsState->areaLightName,
-                                         graphicsState->areaLightParams,
-                                         graphicsState->areaLightLoc));
+    if (!graphicsState.areaLightName.empty()) {
+        areaLights.push_back(SceneEntity(graphicsState.areaLightName,
+                                         graphicsState.areaLightParams,
+                                         graphicsState.areaLightLoc));
         areaLightIndex = areaLights.size() - 1;
     }
 
     if (CTMIsAnimated()) {
         std::vector<AnimatedShapeSceneEntity> *as = &animatedShapes;
         if (currentInstance != nullptr) {
-            if (!graphicsState->areaLightName.empty())
+            if (!graphicsState.areaLightName.empty())
                 Warning(&loc, "Area lights not supported with object instancing");
             as = &currentInstance->animatedShapes;
         }
 
-        AnimatedTransform renderFromShape(GetCTM(0), transformStartTime, GetCTM(1),
-                                          transformEndTime);
+        AnimatedTransform renderFromShape = RenderFromObject();
         const class Transform *identity = transformCache.Lookup(pbrt::Transform());
 
         as->push_back(AnimatedShapeSceneEntity(
             {name, std::move(dict), loc, renderFromShape, identity,
-             graphicsState->reverseOrientation, graphicsState->currentMaterialIndex,
-             graphicsState->currentMaterialName, areaLightIndex,
-             graphicsState->currentInsideMedium, graphicsState->currentOutsideMedium}));
+             graphicsState.reverseOrientation, graphicsState.currentMaterialIndex,
+             graphicsState.currentMaterialName, areaLightIndex,
+             graphicsState.currentInsideMedium, graphicsState.currentOutsideMedium}));
     } else {
         std::vector<ShapeSceneEntity> *s = &shapes;
         if (currentInstance != nullptr) {
-            if (!graphicsState->areaLightName.empty())
+            if (!graphicsState.areaLightName.empty())
                 Warning(&loc, "Area lights not supported with object instancing");
             s = &currentInstance->shapes;
         }
 
-        const class Transform *renderFromObject = transformCache.Lookup(GetCTM(0));
+        const class Transform *renderFromObject =
+            transformCache.Lookup(RenderFromObject(0));
         const class Transform *objectFromRender =
             transformCache.Lookup(Inverse(*renderFromObject));
 
         s->push_back(ShapeSceneEntity(
             {name, std::move(dict), loc, renderFromObject, objectFromRender,
-             graphicsState->reverseOrientation, graphicsState->currentMaterialIndex,
-             graphicsState->currentMaterialName, areaLightIndex,
-             graphicsState->currentInsideMedium, graphicsState->currentOutsideMedium}));
+             graphicsState.reverseOrientation, graphicsState.currentMaterialIndex,
+             graphicsState.currentMaterialName, areaLightIndex,
+             graphicsState.currentInsideMedium, graphicsState.currentOutsideMedium}));
     }
 }
 
 void ParsedScene::ObjectBegin(const std::string &name, FileLoc loc) {
     VERIFY_WORLD("ObjectBegin");
-    pushedGraphicsStates.push_back(*graphicsState);
-    pushedTransforms.push_back(curTransform);
-    pushedActiveTransformBits.push_back(activeTransformBits);
+    pushedGraphicsStates.push_back(graphicsState);
 
     pushStack.push_back(std::make_pair('o', loc));
 
@@ -383,21 +334,12 @@ void ParsedScene::ObjectEnd(FileLoc loc) {
     currentInstance = nullptr;
 
     // NOTE: Must keep the following consistent with AttributeEnd
-    *graphicsState = std::move(pushedGraphicsStates.back());
+    graphicsState = std::move(pushedGraphicsStates.back());
     pushedGraphicsStates.pop_back();
-
-    curTransform = pushedTransforms.back();
-    pushedTransforms.pop_back();
-    activeTransformBits = pushedActiveTransformBits.back();
-    pushedActiveTransformBits.pop_back();
 
     ++nObjectInstancesCreated;
 
-    if (pushStack.back().first == 't')
-        ErrorExitDeferred(&loc,
-                          "Mismatched nesting: open TransformBegin from %s at ObjectEnd",
-                          pushStack.back().second);
-    else if (pushStack.back().first == 'a')
+    if (pushStack.back().first == 'a')
         ErrorExitDeferred(&loc,
                           "Mismatched nesting: open AttributeBegin from %s at ObjectEnd",
                           pushStack.back().second);
@@ -419,14 +361,14 @@ void ParsedScene::ObjectInstance(const std::string &name, FileLoc loc) {
 
     if (CTMIsAnimated()) {
         AnimatedTransform animatedRenderFromInstance(
-            GetCTM(0) * worldFromRender, transformStartTime, GetCTM(1) * worldFromRender,
-            transformEndTime);
+            RenderFromObject(0) * worldFromRender, graphicsState.transformStartTime,
+            RenderFromObject(1) * worldFromRender, graphicsState.transformEndTime);
 
         instances.push_back(
             InstanceSceneEntity(name, loc, animatedRenderFromInstance, nullptr));
     } else {
         const class Transform *renderFromInstance =
-            transformCache.Lookup(GetCTM(0) * worldFromRender);
+            transformCache.Lookup(RenderFromObject(0) * worldFromRender);
 
         instances.push_back(
             InstanceSceneEntity(name, loc, AnimatedTransform(), renderFromInstance));
@@ -434,32 +376,22 @@ void ParsedScene::ObjectInstance(const std::string &name, FileLoc loc) {
 }
 
 void ParsedScene::EndOfFiles() {
-    if (currentApiState != APIState::WorldBlock)
+    if (currentBlock != BlockState::WorldBlock)
         ErrorExitDeferred("End of files before \"WorldBegin\".");
 
     // Ensure there are no pushed graphics states
     while (!pushedGraphicsStates.empty()) {
         ErrorExitDeferred("Missing end to AttributeBegin");
         pushedGraphicsStates.pop_back();
-        pushedTransforms.pop_back();
-    }
-    while (!pushedTransforms.empty()) {
-        ErrorExitDeferred("Missing end to TransformBegin");
-        pushedTransforms.pop_back();
     }
 
     if (errorExit)
         ErrorExit("Fatal errors during scene construction");
 }
 
-ParsedScene::~ParsedScene() {
-    delete graphicsState;
-}
-
 void ParsedScene::Option(const std::string &name, const std::string &value, FileLoc loc) {
     std::string nName = normalizeArg(name);
 
-    VERIFY_INITIALIZED("Option");
     if (nName == "disablepixeljitter") {
         if (value == "true")
             Options->disablePixelJitter = true;
@@ -507,80 +439,70 @@ void ParsedScene::Option(const std::string &name, const std::string &value, File
 }
 
 void ParsedScene::Transform(Float tr[16], FileLoc loc) {
-    VERIFY_INITIALIZED("Transform");
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] = Transpose(
+    FOR_ACTIVE_TRANSFORMS(graphicsState.ctm[i] = Transpose(
                               pbrt::Transform(SquareMatrix<4>(pstd::MakeSpan(tr, 16))));)
 }
 
 void ParsedScene::ConcatTransform(Float tr[16], FileLoc loc) {
-    VERIFY_INITIALIZED("ConcatTransform");
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] =
-                              curTransform[i] * Transpose(pbrt::Transform(SquareMatrix<4>(
-                                                    pstd::MakeSpan(tr, 16))));)
+    FOR_ACTIVE_TRANSFORMS(
+        graphicsState.ctm[i] =
+            graphicsState.ctm[i] *
+            Transpose(pbrt::Transform(SquareMatrix<4>(pstd::MakeSpan(tr, 16))));)
 }
 
 void ParsedScene::Rotate(Float angle, Float dx, Float dy, Float dz, FileLoc loc) {
-    VERIFY_INITIALIZED("Rotate");
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] = curTransform[i] *
-                                            pbrt::Rotate(angle, Vector3f(dx, dy, dz));)
+    FOR_ACTIVE_TRANSFORMS(graphicsState.ctm[i] =
+                              graphicsState.ctm[i] *
+                              pbrt::Rotate(angle, Vector3f(dx, dy, dz));)
 }
 
 void ParsedScene::Scale(Float sx, Float sy, Float sz, FileLoc loc) {
-    VERIFY_INITIALIZED("Scale");
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] = curTransform[i] * pbrt::Scale(sx, sy, sz);)
+    FOR_ACTIVE_TRANSFORMS(graphicsState.ctm[i] =
+                              graphicsState.ctm[i] * pbrt::Scale(sx, sy, sz);)
 }
 
 void ParsedScene::LookAt(Float ex, Float ey, Float ez, Float lx, Float ly, Float lz,
                          Float ux, Float uy, Float uz, FileLoc loc) {
-    VERIFY_INITIALIZED("LookAt");
     class Transform lookAt =
         pbrt::LookAt(Point3f(ex, ey, ez), Point3f(lx, ly, lz), Vector3f(ux, uy, uz));
-    FOR_ACTIVE_TRANSFORMS(curTransform[i] = curTransform[i] * lookAt;);
+    FOR_ACTIVE_TRANSFORMS(graphicsState.ctm[i] = graphicsState.ctm[i] * lookAt;);
 }
 
 void ParsedScene::ActiveTransformAll(FileLoc loc) {
-    activeTransformBits = AllTransformsBits;
+    graphicsState.activeTransformBits = AllTransformsBits;
 }
 
 void ParsedScene::ActiveTransformEndTime(FileLoc loc) {
-    activeTransformBits = EndTransformBits;
+    graphicsState.activeTransformBits = EndTransformBits;
 }
 
 void ParsedScene::ActiveTransformStartTime(FileLoc loc) {
-    activeTransformBits = StartTransformBits;
+    graphicsState.activeTransformBits = StartTransformBits;
 }
 
 void ParsedScene::TransformTimes(Float start, Float end, FileLoc loc) {
     VERIFY_OPTIONS("TransformTimes");
-    transformStartTime = start;
-    transformEndTime = end;
-}
-
-void ParsedScene::ColorSpace(const std::string &n, FileLoc loc) {
-    VERIFY_INITIALIZED("RGBColorSpace");
-    if (const RGBColorSpace *cs = RGBColorSpace::GetNamed(n))
-        graphicsState->colorSpace = cs;
-    else
-        Error(&loc, "%s: color space unknown", n);
+    graphicsState.transformStartTime = start;
+    graphicsState.transformEndTime = end;
 }
 
 void ParsedScene::PixelFilter(const std::string &name, ParsedParameterVector params,
                               FileLoc loc) {
-    ParameterDictionary dict(std::move(params), graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.colorSpace);
     VERIFY_OPTIONS("PixelFilter");
     filter = SceneEntity(name, std::move(dict), loc);
 }
 
 void ParsedScene::Film(const std::string &type, ParsedParameterVector params,
                        FileLoc loc) {
-    ParameterDictionary dict(std::move(params), graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.colorSpace);
     VERIFY_OPTIONS("Film");
     film = SceneEntity(type, std::move(dict), loc);
 }
 
 void ParsedScene::Sampler(const std::string &name, ParsedParameterVector params,
                           FileLoc loc) {
-    ParameterDictionary dict(std::move(params), graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.colorSpace);
 
     VERIFY_OPTIONS("Sampler");
     sampler = SceneEntity(name, std::move(dict), loc);
@@ -588,91 +510,36 @@ void ParsedScene::Sampler(const std::string &name, ParsedParameterVector params,
 
 void ParsedScene::Accelerator(const std::string &name, ParsedParameterVector params,
                               FileLoc loc) {
-    ParameterDictionary dict(std::move(params), graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.colorSpace);
     VERIFY_OPTIONS("Accelerator");
     accelerator = SceneEntity(name, std::move(dict), loc);
 }
 
 void ParsedScene::Integrator(const std::string &name, ParsedParameterVector params,
                              FileLoc loc) {
-    ParameterDictionary dict(std::move(params), graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.colorSpace);
 
     VERIFY_OPTIONS("Integrator");
     integrator = SceneEntity(name, std::move(dict), loc);
 }
 
-void ParsedScene::Camera(const std::string &name, ParsedParameterVector params,
-                         FileLoc loc) {
-    ParameterDictionary dict(std::move(params), graphicsState->colorSpace);
-
-    VERIFY_OPTIONS("Camera");
-
-    TransformSet cameraFromWorld = curTransform;
-    TransformSet worldFromCamera = Inverse(curTransform);
-    namedCoordinateSystems["camera"] = Inverse(cameraFromWorld);
-
-    CameraTransform cameraTransform(AnimatedTransform(
-        worldFromCamera[0], transformStartTime, worldFromCamera[1], transformEndTime));
-    renderFromWorld = cameraTransform.RenderFromWorld();
-
-    camera = CameraSceneEntity(name, std::move(dict), loc, cameraTransform,
-                               graphicsState->currentOutsideMedium);
-}
-
 void ParsedScene::MakeNamedMedium(const std::string &name, ParsedParameterVector params,
                                   FileLoc loc) {
-    VERIFY_INITIALIZED("MakeNamedMedium");
-    WARN_IF_ANIMATED_TRANSFORM("MakeNamedMedium");
-    ParameterDictionary dict(std::move(params), graphicsState->mediumAttributes,
-                             graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.mediumAttributes,
+                             graphicsState.colorSpace);
 
     if (media.find(name) != media.end()) {
         ErrorExitDeferred(&loc, "Named medium \"%s\" redefined.", name);
         return;
     }
 
-    AnimatedTransform renderFromMedium(GetCTM(0), transformStartTime, GetCTM(1),
-                                       transformEndTime);
-
-    media[name] = TransformedSceneEntity(name, std::move(dict), loc, renderFromMedium);
+    media[name] = TransformedSceneEntity(name, std::move(dict), loc, RenderFromObject());
 }
 
 void ParsedScene::MediumInterface(const std::string &insideName,
                                   const std::string &outsideName, FileLoc loc) {
-    VERIFY_INITIALIZED("MediumInterface");
-    graphicsState->currentInsideMedium = insideName;
-    graphicsState->currentOutsideMedium = outsideName;
-}
-
-void ParsedScene::TransformBegin(FileLoc loc) {
-    VERIFY_WORLD("TransformBegin");
-    pushedTransforms.push_back(curTransform);
-    pushedActiveTransformBits.push_back(activeTransformBits);
-    pushStack.push_back(std::make_pair('t', loc));
-}
-
-void ParsedScene::TransformEnd(FileLoc loc) {
-    VERIFY_WORLD("TransformEnd");
-    if (pushedTransforms.empty()) {
-        Error(&loc, "Unmatched TransformEnd encountered. Ignoring it.");
-        return;
-    }
-    curTransform = pushedTransforms.back();
-    pushedTransforms.pop_back();
-    activeTransformBits = pushedActiveTransformBits.back();
-    pushedActiveTransformBits.pop_back();
-
-    if (pushStack.back().first == 'a')
-        ErrorExitDeferred(
-            &loc, "Mismatched nesting: open AttributeBegin from %s at TransformEnd",
-            pushStack.back().second);
-    else if (pushStack.back().first == 'o')
-        ErrorExitDeferred(&loc,
-                          "Mismatched nesting: open ObjectBegin from %s at TransformEnd",
-                          pushStack.back().second);
-    else
-        CHECK_EQ(pushStack.back().first, 't');
-    pushStack.pop_back();
+    graphicsState.currentInsideMedium = insideName;
+    graphicsState.currentOutsideMedium = outsideName;
 }
 
 void ParsedScene::Texture(const std::string &name, const std::string &type,
@@ -680,11 +547,8 @@ void ParsedScene::Texture(const std::string &name, const std::string &type,
                           FileLoc loc) {
     VERIFY_WORLD("Texture");
 
-    ParameterDictionary dict(std::move(params), graphicsState->textureAttributes,
-                             graphicsState->colorSpace);
-
-    AnimatedTransform renderFromTexture(GetCTM(0), transformStartTime, GetCTM(1),
-                                        transformEndTime);
+    ParameterDictionary dict(std::move(params), graphicsState.textureAttributes,
+                             graphicsState.colorSpace);
 
     if (type != "float" && type != "spectrum") {
         ErrorExitDeferred(
@@ -702,25 +566,25 @@ void ParsedScene::Texture(const std::string &name, const std::string &type,
         }
 
     textures.push_back(std::make_pair(
-        name, TextureSceneEntity(texname, std::move(dict), loc, renderFromTexture)));
+        name, TextureSceneEntity(texname, std::move(dict), loc, RenderFromObject())));
 }
 
 void ParsedScene::Material(const std::string &name, ParsedParameterVector params,
                            FileLoc loc) {
     VERIFY_WORLD("Material");
-    ParameterDictionary dict(std::move(params), graphicsState->materialAttributes,
-                             graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.materialAttributes,
+                             graphicsState.colorSpace);
     materials.push_back(SceneEntity(name, std::move(dict), loc));
-    graphicsState->currentMaterialIndex = materials.size() - 1;
-    graphicsState->currentMaterialName.clear();
+    graphicsState.currentMaterialIndex = materials.size() - 1;
+    graphicsState.currentMaterialName.clear();
 }
 
 void ParsedScene::MakeNamedMaterial(const std::string &name, ParsedParameterVector params,
                                     FileLoc loc) {
     VERIFY_WORLD("MakeNamedMaterial");
 
-    ParameterDictionary dict(std::move(params), graphicsState->materialAttributes,
-                             graphicsState->colorSpace);
+    ParameterDictionary dict(std::move(params), graphicsState.materialAttributes,
+                             graphicsState.colorSpace);
 
     // Note: O(n). FIXME?
     for (const auto &nm : namedMaterials)
@@ -734,29 +598,61 @@ void ParsedScene::MakeNamedMaterial(const std::string &name, ParsedParameterVect
 
 void ParsedScene::NamedMaterial(const std::string &name, FileLoc loc) {
     VERIFY_WORLD("NamedMaterial");
-    graphicsState->currentMaterialName = name;
-    graphicsState->currentMaterialIndex = -1;
+    graphicsState.currentMaterialName = name;
+    graphicsState.currentMaterialIndex = -1;
 }
 
 void ParsedScene::AreaLightSource(const std::string &name, ParsedParameterVector params,
                                   FileLoc loc) {
     VERIFY_WORLD("AreaLightSource");
-    graphicsState->areaLightName = name;
-    graphicsState->areaLightParams = ParameterDictionary(
-        std::move(params), graphicsState->lightAttributes, graphicsState->colorSpace);
-    graphicsState->areaLightLoc = loc;
-}
-
-void ParsedScene::ReverseOrientation(FileLoc loc) {
-    VERIFY_WORLD("ReverseOrientation");
-    graphicsState->reverseOrientation = !graphicsState->reverseOrientation;
+    graphicsState.areaLightName = name;
+    graphicsState.areaLightParams = ParameterDictionary(
+        std::move(params), graphicsState.lightAttributes, graphicsState.colorSpace);
+    graphicsState.areaLightLoc = loc;
 }
 
 void ParsedScene::CreateMaterials(
-    /*const*/ std::map<std::string, FloatTextureHandle> &floatTextures,
-    /*const*/ std::map<std::string, SpectrumTextureHandle> &spectrumTextures,
-    Allocator alloc, std::map<std::string, MaterialHandle> *namedMaterialsOut,
+    /*const*/ NamedTextures &textures, Allocator alloc,
+    std::map<std::string, MaterialHandle> *namedMaterialsOut,
     std::vector<MaterialHandle> *materialsOut) const {
+    // First, load all of the normal maps in parallel.
+    std::set<std::string> normalMapFilenames;
+    for (const auto &nm : namedMaterials) {
+        std::string fn = nm.second.parameters.GetOneString("normalmap", "");
+        if (!fn.empty())
+            normalMapFilenames.insert(fn);
+    }
+    for (const auto &mtl : materials) {
+        std::string fn = mtl.parameters.GetOneString("normalmap", "");
+        if (!fn.empty())
+            normalMapFilenames.insert(fn);
+    }
+
+    std::vector<std::string> normalMapFilenameVector;
+    std::copy(normalMapFilenames.begin(), normalMapFilenames.end(),
+              std::back_inserter(normalMapFilenameVector));
+
+    LOG_VERBOSE("Reading %d normal maps in parallel", normalMapFilenameVector.size());
+    std::map<std::string, Image *> normalMapCache;
+    std::mutex mutex;
+    ParallelFor(0, normalMapFilenameVector.size(), [&](int64_t index) {
+        std::string filename = normalMapFilenameVector[index];
+        ImageAndMetadata immeta =
+            Image::Read(filename, Allocator(), ColorEncodingHandle::Linear);
+        Image &image = immeta.image;
+        ImageChannelDesc rgbDesc = image.GetChannelDesc({"R", "G", "B"});
+        if (!rgbDesc)
+            ErrorExitDeferred("%s: normal map image must contain R, G, and B channels",
+                              filename);
+        Image *normalMap = alloc.new_object<Image>(alloc);
+        *normalMap = image.SelectChannels(rgbDesc);
+
+        mutex.lock();
+        normalMapCache[filename] = normalMap;
+        mutex.unlock();
+    });
+    LOG_VERBOSE("Done reading normal maps");
+
     // Named materials
     for (const auto &nm : namedMaterials) {
         const std::string &name = nm.first;
@@ -774,28 +670,32 @@ void ParsedScene::CreateMaterials(
                               name);
             continue;
         }
-        TextureParameterDictionary texDict(&mtl.parameters, &floatTextures,
-                                           &spectrumTextures);
-        MaterialHandle m =
-            MaterialHandle::Create(type, texDict, *namedMaterialsOut, &mtl.loc, alloc);
+
+        std::string fn = nm.second.parameters.GetOneString("normalmap", "");
+        Image *normalMap = !fn.empty() ? normalMapCache[fn] : nullptr;
+
+        TextureParameterDictionary texDict(&mtl.parameters, &textures);
+        MaterialHandle m = MaterialHandle::Create(type, texDict, normalMap,
+                                                  *namedMaterialsOut, &mtl.loc, alloc);
         (*namedMaterialsOut)[name] = m;
     }
 
     // Regular materials
     materialsOut->reserve(materials.size());
     for (const auto &mtl : materials) {
-        TextureParameterDictionary texDict(&mtl.parameters, &floatTextures,
-                                           &spectrumTextures);
-        MaterialHandle m = MaterialHandle::Create(mtl.name, texDict, *namedMaterialsOut,
-                                                  &mtl.loc, alloc);
+        std::string fn = mtl.parameters.GetOneString("normalmap", "");
+        Image *normalMap = !fn.empty() ? normalMapCache[fn] : nullptr;
+
+        TextureParameterDictionary texDict(&mtl.parameters, &textures);
+        MaterialHandle m = MaterialHandle::Create(mtl.name, texDict, normalMap,
+                                                  *namedMaterialsOut, &mtl.loc, alloc);
         materialsOut->push_back(m);
     }
 }
 
-void ParsedScene::CreateTextures(
-    std::map<std::string, FloatTextureHandle> *floatTextureMap,
-    std::map<std::string, SpectrumTextureHandle> *spectrumTextureMap, Allocator alloc,
-    bool gpu) const {
+NamedTextures ParsedScene::CreateTextures(Allocator alloc, bool gpu) const {
+    NamedTextures textures;
+
     std::set<std::string> seenFloatTextureFilenames, seenSpectrumTextureFilenames;
     std::vector<size_t> parallelFloatTextures, serialFloatTextures;
     std::vector<size_t> parallelSpectrumTextures, serialSpectrumTextures;
@@ -866,11 +766,11 @@ void ParsedScene::CreateTextures(
         pbrt::Transform renderFromTexture = tex.second.renderFromObject.startTransform;
         // Pass nullptr for the textures, since they shouldn't be accessed
         // anyway.
-        TextureParameterDictionary texDict(&tex.second.parameters, nullptr, nullptr);
+        TextureParameterDictionary texDict(&tex.second.parameters, nullptr);
         FloatTextureHandle t = FloatTextureHandle::Create(
             tex.second.texName, renderFromTexture, texDict, &tex.second.loc, alloc, gpu);
         std::lock_guard<std::mutex> lock(mutex);
-        (*floatTextureMap)[tex.first] = t;
+        textures.floatTextures[tex.first] = t;
     });
 
     ParallelFor(0, parallelSpectrumTextures.size(), [&](int64_t i) {
@@ -878,11 +778,22 @@ void ParsedScene::CreateTextures(
 
         pbrt::Transform renderFromTexture = tex.second.renderFromObject.startTransform;
         // nullptr for the textures, as above.
-        TextureParameterDictionary texDict(&tex.second.parameters, nullptr, nullptr);
-        SpectrumTextureHandle t = SpectrumTextureHandle::Create(
-            tex.second.texName, renderFromTexture, texDict, &tex.second.loc, alloc, gpu);
+        TextureParameterDictionary texDict(&tex.second.parameters, nullptr);
+        SpectrumTextureHandle albedoTex = SpectrumTextureHandle::Create(
+            tex.second.texName, renderFromTexture, texDict, SpectrumType::Albedo,
+            &tex.second.loc, alloc, gpu);
+        // These should be fast since they should hit the texture cache
+        SpectrumTextureHandle unboundedTex = SpectrumTextureHandle::Create(
+            tex.second.texName, renderFromTexture, texDict, SpectrumType::Unbounded,
+            &tex.second.loc, alloc, gpu);
+        SpectrumTextureHandle illumTex = SpectrumTextureHandle::Create(
+            tex.second.texName, renderFromTexture, texDict, SpectrumType::Illuminant,
+            &tex.second.loc, alloc, gpu);
+
         std::lock_guard<std::mutex> lock(mutex);
-        (*spectrumTextureMap)[tex.first] = t;
+        textures.albedoSpectrumTextures[tex.first] = albedoTex;
+        textures.unboundedSpectrumTextures[tex.first] = unboundedTex;
+        textures.illuminantSpectrumTextures[tex.first] = illumTex;
     });
 
     LOG_VERBOSE("Loading serial textures");
@@ -891,11 +802,10 @@ void ParsedScene::CreateTextures(
         const auto &tex = floatTextures[index];
 
         pbrt::Transform renderFromTexture = tex.second.renderFromObject.startTransform;
-        TextureParameterDictionary texDict(&tex.second.parameters, floatTextureMap,
-                                           spectrumTextureMap);
+        TextureParameterDictionary texDict(&tex.second.parameters, &textures);
         FloatTextureHandle t = FloatTextureHandle::Create(
             tex.second.texName, renderFromTexture, texDict, &tex.second.loc, alloc, gpu);
-        (*floatTextureMap)[tex.first] = t;
+        textures.floatTextures[tex.first] = t;
     }
     for (size_t index : serialSpectrumTextures) {
         const auto &tex = spectrumTextures[index];
@@ -905,14 +815,24 @@ void ParsedScene::CreateTextures(
                                      "Using start transform.");
 
         pbrt::Transform renderFromTexture = tex.second.renderFromObject.startTransform;
-        TextureParameterDictionary texDict(&tex.second.parameters, floatTextureMap,
-                                           spectrumTextureMap);
-        SpectrumTextureHandle t = SpectrumTextureHandle::Create(
-            tex.second.texName, renderFromTexture, texDict, &tex.second.loc, alloc, gpu);
-        (*spectrumTextureMap)[tex.first] = t;
+        TextureParameterDictionary texDict(&tex.second.parameters, &textures);
+        SpectrumTextureHandle albedoTex = SpectrumTextureHandle::Create(
+            tex.second.texName, renderFromTexture, texDict, SpectrumType::Albedo,
+            &tex.second.loc, alloc, gpu);
+        SpectrumTextureHandle unboundedTex = SpectrumTextureHandle::Create(
+            tex.second.texName, renderFromTexture, texDict, SpectrumType::Unbounded,
+            &tex.second.loc, alloc, gpu);
+        SpectrumTextureHandle illumTex = SpectrumTextureHandle::Create(
+            tex.second.texName, renderFromTexture, texDict, SpectrumType::Illuminant,
+            &tex.second.loc, alloc, gpu);
+
+        textures.albedoSpectrumTextures[tex.first] = albedoTex;
+        textures.unboundedSpectrumTextures[tex.first] = unboundedTex;
+        textures.illuminantSpectrumTextures[tex.first] = illumTex;
     }
 
     LOG_VERBOSE("Done creating textures");
+    return textures;
 }
 
 std::map<std::string, MediumHandle> ParsedScene::CreateMedia(Allocator alloc) const {
@@ -1058,6 +978,11 @@ void FormattingScene::Film(const std::string &type, ParsedParameterVector params
             extra +=
                 StringPrintf("%s\"float maxcomponentvalue\" [ %f ]\n", indent(1), m[0]);
         }
+        std::vector<Float> s = dict.GetFloatArray("scale");
+        if (!s.empty()) {
+            dict.RemoveFloat("scale");
+            extra += StringPrintf("%s\"float iso\" [ %f ]\n", indent(1), 100 * s[0]);
+        }
     }
 
     if (upgrade && type == "image")
@@ -1097,14 +1022,18 @@ void FormattingScene::Integrator(const std::string &name, ParsedParameterVector 
 
     std::string extra;
     if (upgrade) {
+        dict.RemoveFloat("rrthreshold");
+
         if (name == "sppm") {
             dict.RemoveInt("imagewritefrequency");
 
             std::vector<int> iterations = dict.GetIntArray("numiterations");
             if (!iterations.empty()) {
                 dict.RemoveInt("numiterations");
-                extra += indent(1) +
-                         StringPrintf("\"integer iterations\" [ %d ]\n", iterations[0]);
+                Warning(
+                    &loc,
+                    "The SPPM integrator no longer takes a \"numiterations\" parameter. "
+                    "This value is now set via the Sampler's number of pixel samples.");
             }
         }
         std::string lss = dict.GetOneString("lightsamplestrategy", "");
@@ -1356,7 +1285,7 @@ std::string FormattingScene::upgradeMaterial(std::string *name, ParameterDiction
         bool matches = (rgb && rgb->r == value && rgb->g == value && rgb->b == value);
 
         if (!matches &&
-            !dict->GetSpectrumArray(paramName, SpectrumType::Reflectance, {}).empty())
+            !dict->GetSpectrumArray(paramName, SpectrumType::Unbounded, {}).empty())
             Warning(&loc,
                     "Parameter is being removed when converting "
                     "to \"%s\" material: %s",
@@ -1384,7 +1313,7 @@ std::string FormattingScene::upgradeMaterial(std::string *name, ParameterDiction
             return "";
         }
 
-        if (dict->GetSpectrumArray("opacity", SpectrumType::Reflectance, {}).empty())
+        if (dict->GetSpectrumArray("opacity", SpectrumType::Unbounded, {}).empty())
             return "";
 
         pstd::optional<RGB> opacity = dict->GetOneRGB("opacity");
@@ -1408,7 +1337,8 @@ std::string FormattingScene::upgradeMaterial(std::string *name, ParameterDiction
                         rgb->r, rgb->g, rgb->b, avg);
                 extra += indent(1) + StringPrintf("\"float amount\" [ %f ]\n", avg);
             }
-        } else if (dict->GetSpectrumArray("amount", SpectrumType::General, {}).size() > 0)
+        } else if (dict->GetSpectrumArray("amount", SpectrumType::Unbounded, {}).size() >
+                   0)
             ErrorExitDeferred(
                 &loc, "Unable to update non-RGB spectrum \"amount\" to a scalar: %s",
                 dict->ToParameterDefinition("amount"));
@@ -1476,6 +1406,9 @@ std::string FormattingScene::upgradeMaterial(std::string *name, ParameterDiction
         extra += indent(1) + "\"spectrum k\" [ \"metal-Ag-k\" ]\n";
 
         removeParamSilentIfConstant("Kr", 0);
+    } else if (*name == "disney") {
+        *name = "diffuse";
+        dict->RenameParameter("color", "reflectance");
     }
 
     return extra;
@@ -1558,7 +1491,7 @@ void FormattingScene::NamedMaterial(const std::string &name, FileLoc loc) {
 static bool upgradeRGBToScale(ParameterDictionary *dict, const char *name,
                               Float *totalScale) {
     std::vector<SpectrumHandle> s =
-        dict->GetSpectrumArray(name, SpectrumType::General, {});
+        dict->GetSpectrumArray(name, SpectrumType::Unbounded, {});
     if (s.empty())
         return true;
 
@@ -1597,7 +1530,7 @@ void FormattingScene::LightSource(const std::string &name, ParsedParameterVector
                               "Please modify your scene file manually.");
             return;
         }
-        dict.RemoveInt("nsamples");
+        dict.RemoveInt("samples");
 
         if (dict.GetOneString("mapname", "").empty() == false) {
             if (name == "infinite" && !upgradeRGBToScale(&dict, "L", &totalScale)) {

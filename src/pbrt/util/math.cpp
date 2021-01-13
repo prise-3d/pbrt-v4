@@ -112,25 +112,6 @@ template SquareMatrix<2> operator*(const SquareMatrix<2> &m1, const SquareMatrix
 template class SquareMatrix<3>;
 template class SquareMatrix<4>;
 
-// Math Function Definitions
-pstd::optional<SquareMatrix<3>> LinearLeastSquares(const Float A[][3], const Float B[][3],
-                                                   int rows) {
-    SquareMatrix<3> AtA = SquareMatrix<3>::Zero();
-    SquareMatrix<3> AtB = SquareMatrix<3>::Zero();
-
-    for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-            for (int r = 0; r < rows; ++r) {
-                AtA[i][j] += A[r][i] * A[r][j];
-                AtB[i][j] += A[r][i] * B[r][j];
-            }
-
-    auto AtAi = Inverse(AtA);
-    if (!AtAi)
-        return {};
-    return Transpose(*AtAi * AtB);
-}
-
 int NextPrime(int x) {
     if (x == 2)
         return 3;
@@ -161,46 +142,18 @@ int NextPrime(int x) {
 }
 
 #ifndef PBRT_IS_GPU_CODE
-template <>
-const Interval<float> Interval<float>::Pi = Interval<float>(3.1415925, 3.14159274);
-template <>
-const Interval<double> Interval<double>::Pi = Interval<double>(3.1415926535897931,
-                                                               3.1415926535897936);
+#ifdef PBRT_FLOAT_IS_DOUBLE
+const Interval Interval::Pi(3.1415926535897931, 3.1415926535897936);
+#else
+const Interval Interval::Pi = Interval(3.1415925f, 3.14159274f);
+#endif
 #endif
 
-template <typename Float>
-std::string Interval<Float>::ToString() const {
+std::string Interval::ToString() const {
     return StringPrintf("[ Interval [%f, %f] ]", low, high);
 }
 
-template std::string Interval<float>::ToString() const;
-template std::string Interval<double>::ToString() const;
-
 // Spline Interpolation Function Definitions
-Float CatmullRom(pstd::span<const Float> nodes, pstd::span<const Float> values, Float x) {
-    CHECK_EQ(nodes.size(), values.size());
-    if (!(x >= nodes.front() && x <= nodes.back()))
-        return 0;
-    int idx = FindInterval(nodes.size(), [&](int i) { return nodes[i] <= x; });
-    Float x0 = nodes[idx], x1 = nodes[idx + 1];
-    Float f0 = values[idx], f1 = values[idx + 1];
-    Float width = x1 - x0;
-    Float d0, d1;
-    if (idx > 0)
-        d0 = width * (f1 - values[idx - 1]) / (x1 - nodes[idx - 1]);
-    else
-        d0 = f1 - f0;
-
-    if (idx + 2 < nodes.size())
-        d1 = width * (values[idx + 2] - f0) / (nodes[idx + 2] - x0);
-    else
-        d1 = f1 - f0;
-
-    Float t = (x - x0) / (x1 - x0), t2 = t * t, t3 = t2 * t;
-    return (2 * t3 - 3 * t2 + 1) * f0 + (-2 * t3 + 3 * t2) * f1 + (t3 - 2 * t2 + t) * d0 +
-           (t3 - t2) * d1;
-}
-
 bool CatmullRomWeights(pstd::span<const Float> nodes, Float x, int *offset,
                        pstd::span<Float> weights) {
     CHECK_GE(weights.size(), 4);
@@ -243,80 +196,95 @@ bool CatmullRomWeights(pstd::span<const Float> nodes, Float x, int *offset,
         weights[2] += w3;
         weights[3] = 0;
     }
+
     return true;
 }
 
-Float IntegrateCatmullRom(pstd::span<const Float> x, pstd::span<const Float> values,
-                          pstd::span<Float> cdf) {
-    CHECK_EQ(x.size(), values.size());
-    Float sum = 0;
-    cdf[0] = 0;
-    for (int i = 0; i < x.size() - 1; ++i) {
-        // Look up $x_i$ and function values of spline segment _i_
-        Float x0 = x[i], x1 = x[i + 1];
-        Float f0 = values[i], f1 = values[i + 1];
-        Float width = x1 - x0;
-
-        // Approximate derivatives using finite differences
-        Float d0, d1;
-        if (i > 0)
-            d0 = width * (f1 - values[i - 1]) / (x1 - x[i - 1]);
-        else
-            d0 = f1 - f0;
-        if (i + 2 < x.size())
-            d1 = width * (values[i + 2] - f0) / (x[i + 2] - x0);
-        else
-            d1 = f1 - f0;
-
-        // Keep a running sum and build a cumulative distribution function
-        sum += ((d0 - d1) * (1.f / 12.f) + (f0 + f1) * .5f) * width;
-        cdf[i + 1] = sum;
-    }
-    return sum;
-}
-
-Float InvertCatmullRom(pstd::span<const Float> x, pstd::span<const Float> values,
-                       Float u) {
-    // Stop when _u_ is out of bounds
-    if (!(u > values.front()))
-        return x.front();
-    else if (!(u < values.back()))
-        return x.back();
-
-    // Map _u_ to a spline interval by inverting _values_
-    int i = FindInterval(values.size(), [&](int i) { return values[i] <= u; });
-
-    // Look up $x_i$ and function values of spline segment _i_
-    Float x0 = x[i], x1 = x[i + 1];
-    Float f0 = values[i], f1 = values[i + 1];
+Float CatmullRom(pstd::span<const Float> nodes, pstd::span<const Float> f, Float x) {
+    CHECK_EQ(nodes.size(), f.size());
+    if (!(x >= nodes.front() && x <= nodes.back()))
+        return 0;
+    int idx = FindInterval(nodes.size(), [&](int i) { return nodes[i] <= x; });
+    Float x0 = nodes[idx], x1 = nodes[idx + 1];
+    Float f0 = f[idx], f1 = f[idx + 1];
     Float width = x1 - x0;
-
-    // Approximate derivatives using finite differences
     Float d0, d1;
-    if (i > 0)
-        d0 = width * (f1 - values[i - 1]) / (x1 - x[i - 1]);
+    if (idx > 0)
+        d0 = width * (f1 - f[idx - 1]) / (x1 - nodes[idx - 1]);
     else
         d0 = f1 - f0;
-    if (i + 2 < x.size())
-        d1 = width * (values[i + 2] - f0) / (x[i + 2] - x0);
+
+    if (idx + 2 < nodes.size())
+        d1 = width * (f[idx + 2] - f0) / (nodes[idx + 2] - x0);
     else
         d1 = f1 - f0;
 
+    Float t = (x - x0) / (x1 - x0), t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * f0 + (-2 * t3 + 3 * t2) * f1 + (t3 - 2 * t2 + t) * d0 +
+           (t3 - t2) * d1;
+}
+
+Float InvertCatmullRom(pstd::span<const Float> nodes, pstd::span<const Float> f,
+                       Float u) {
+    // Stop when _u_ is out of bounds
+    if (!(u > f.front()))
+        return nodes.front();
+    else if (!(u < f.back()))
+        return nodes.back();
+
+    // Map _u_ to a spline interval by inverting _f_
+    int i = FindInterval(f.size(), [&](int i) { return f[i] <= u; });
+
+    // Look up $x_i$ and function values of spline segment _i_
+    Float x0 = nodes[i], x1 = nodes[i + 1];
+    Float f0 = f[i], f1 = f[i + 1];
+    Float width = x1 - x0;
+
+    // Approximate derivatives using finite differences
+    Float d0 = (i > 0) ? width * (f1 - f[i - 1]) / (x1 - nodes[i - 1]) : (f1 - f0);
+    Float d1 = (i + 2 < nodes.size()) ? width * (f[i + 2] - f0) / (nodes[i + 2] - x0)
+                                      : (f1 - f0);
+
+    // Invert the spline interpolant using Newton-Bisection
     auto eval = [&](Float t) -> std::pair<Float, Float> {
         // Compute powers of _t_
         Float t2 = t * t, t3 = t2 * t;
 
-        // Set _Fhat_ using Equation (8.27)
+        // Set _Fhat_ using Equation (\ref{eq:cubicspline-as-basisfunctions})
         Float Fhat = (2 * t3 - 3 * t2 + 1) * f0 + (-2 * t3 + 3 * t2) * f1 +
                      (t3 - 2 * t2 + t) * d0 + (t3 - t2) * d1;
-        // Set _fhat_ using Equation (not present)
+
+        // Set _fhat_ using Equation (\ref{eq:cubicspline-derivative})
         Float fhat = (6 * t2 - 6 * t) * f0 + (-6 * t2 + 6 * t) * f1 +
                      (3 * t2 - 4 * t + 1) * d0 + (3 * t2 - 2 * t) * d1;
+
         return {Fhat - u, fhat};
     };
     Float t = NewtonBisection(0, 1, eval);
-
     return x0 + t * width;
+}
+
+Float IntegrateCatmullRom(pstd::span<const Float> nodes, pstd::span<const Float> f,
+                          pstd::span<Float> cdf) {
+    CHECK_EQ(nodes.size(), f.size());
+    Float sum = 0;
+    cdf[0] = 0;
+    for (int i = 0; i < nodes.size() - 1; ++i) {
+        // Look up $x_i$ and function values of spline segment _i_
+        Float x0 = nodes[i], x1 = nodes[i + 1];
+        Float f0 = f[i], f1 = f[i + 1];
+        Float width = x1 - x0;
+
+        // Approximate derivatives using finite differences
+        Float d0 = (i > 0) ? width * (f1 - f[i - 1]) / (x1 - nodes[i - 1]) : (f1 - f0);
+        Float d1 = (i + 2 < nodes.size()) ? width * (f[i + 2] - f0) / (nodes[i + 2] - x0)
+                                          : (f1 - f0);
+
+        // Keep a running sum and build a cumulative distribution function
+        sum += width * ((f0 + f1) / 2 + (d0 - d1) / 12);
+        cdf[i + 1] = sum;
+    }
+    return sum;
 }
 
 // Square--Sphere Mapping Function Definitions
@@ -344,6 +312,11 @@ Vector3f EqualAreaSquareToSphere(const Point2f &p) {
     // Compute the z coordinate (flip sign based on signed distance)
     Float r2 = r * r;
     Float z = 1 - r2;
+
+    // Return a float with a's magnitude, but negated if b is negative.
+    auto FlipSign = [](Float a, Float b) {
+        return BitsToFloat(FloatToBits(a) ^ SignBit(b));
+    };
     z = FlipSign(z, sd);
     Float sinTheta = r * SafeSqrt(2 - r2);
 
@@ -399,6 +372,11 @@ Point2f EqualAreaSphereToSquare(const Vector3f &d) {
         u = 1 - u;
         v = 1 - v;
     }
+
+    // Return a float with a's magnitude, but negated if b is negative.
+    auto FlipSign = [](Float a, Float b) {
+        return BitsToFloat(FloatToBits(a) ^ SignBit(b));
+    };
 
     // Move (u,v) to the correct quadrant based on the signs of (x,y)
     u = FlipSign(u, d.x);

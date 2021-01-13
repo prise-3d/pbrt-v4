@@ -17,14 +17,10 @@ namespace pbrt {
 // RenderingCoordinateSystem Definition
 enum class RenderingCoordinateSystem { Camera, CameraWorld, World };
 
-// BasicOptions Definition
-struct BasicOptions {
-    int nThreads = 0;
+// BasicPBRTOptions Definition
+struct BasicPBRTOptions {
     int seed = 0;
-    bool quickRender = false;
     bool quiet = false;
-    bool recordPixelStatistics = false;
-    bool upgrade = false;
     bool disablePixelJitter = false, disableWavelengthJitter = false;
     bool forceDiffuse = false;
     bool useGPU = false;
@@ -32,8 +28,11 @@ struct BasicOptions {
 };
 
 // PBRTOptions Definiton
-struct PBRTOptions : BasicOptions {
+struct PBRTOptions : BasicPBRTOptions {
+    int nThreads = 0;
     LogLevel logLevel = LogLevel::Error;
+    bool writePartialImages = false;
+    bool recordPixelStatistics = false;
     pstd::optional<int> pixelSamples;
     pstd::optional<int> nimages = 1; // P3D updates: use of number of images to generate
     pstd::optional<int> startIndex = 0; // P3D updates: index of image to start with
@@ -42,6 +41,8 @@ struct PBRTOptions : BasicOptions {
     pstd::optional<int> monk = 1; // P3D update k mon parameter (default no monk use)
     pstd::optional<int> pakmon = 0; // P3D update pakmon parameter
     pstd::optional<int> independent = 1; // P3D use of dependant or independant image saving
+    bool quickRender = false;
+    bool upgrade = false;
     std::string imageFile;
     std::string folderName = "temp"; // P3D updates: use of temp or specific folder where to save the computed images
     std::string mseReferenceImage, mseReferenceOutput;
@@ -49,6 +50,7 @@ struct PBRTOptions : BasicOptions {
     std::string displayServer;
     pstd::optional<Bounds2f> cropWindow;
     pstd::optional<Bounds2i> pixelBounds;
+    pstd::optional<Point2i> pixelMaterial;
 
     std::string ToString() const;
 };
@@ -57,10 +59,13 @@ struct PBRTOptions : BasicOptions {
 extern PBRTOptions *Options;
 
 #if defined(PBRT_BUILD_GPU_RENDERER) && defined(__CUDACC__)
-extern __constant__ BasicOptions OptionsGPU;
+extern __constant__ BasicPBRTOptions OptionsGPU;
 #endif
 
-PBRT_CPU_GPU inline const BasicOptions &GetOptions() {
+// Options Inline Functions
+PBRT_CPU_GPU inline const BasicPBRTOptions &GetOptions();
+
+PBRT_CPU_GPU inline const BasicPBRTOptions &GetOptions() {
 #if defined(PBRT_IS_GPU_CODE)
     return OptionsGPU;
 #else

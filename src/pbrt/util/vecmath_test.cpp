@@ -539,8 +539,8 @@ TEST(SphericalTriangleArea, RandomSampling) {
                 v = frame.FromLocal(v);
             }
 
-            if (Triangle::Intersect(Ray(Point3f(0, 0, 0), v), Infinity, Point3f(a),
-                                    Point3f(b), Point3f(c)))
+            if (IntersectTriangle(Ray(Point3f(0, 0, 0), v), Infinity, Point3f(a),
+                                  Point3f(b), Point3f(c)))
                 ++count;
         }
 
@@ -563,7 +563,7 @@ TEST(PointVector, Interval) {
     p += v;
     p = (p - v);
     p = p + 4 * v;
-    FloatInterval d = Dot(v, v);
+    Interval d = Dot(v, v);
     d = DistanceSquared(p, q);
     d = Distance(p, q);
 
@@ -578,4 +578,17 @@ TEST(PointVector, Interval) {
 #endif
 
     Vector3fi vv = Cross(v, v);
+}
+
+TEST(OctahedralVector, EncodeDecode) {
+    for (Point2 u : Hammersley2D(65535)) {
+        Vector3f v = SampleUniformSphere(u);
+
+        OctahedralVector ov(v);
+        Vector3f v2 = Vector3f(ov);
+
+        EXPECT_GT(Length(v2), .999f);
+        EXPECT_LT(Length(v2), 1.001f);
+        EXPECT_LT(std::abs(1 - Dot(v2, v)), .001f);
+    }
 }

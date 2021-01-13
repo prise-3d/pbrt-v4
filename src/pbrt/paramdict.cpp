@@ -378,20 +378,19 @@ std::vector<SpectrumHandle> ParameterDictionary::extractSpectrumArray(
                 RGB rgb(v[0], v[1], v[2]);
                 const RGBColorSpace &cs =
                     param.colorSpace ? *param.colorSpace : *colorSpace;
-                if (spectrumType == SpectrumType::Reflectance) {
-                    if (std::min({v[0], v[1], v[2]}) < 0 ||
-                        std::max({v[0], v[1], v[2]}) > 1)
-                        ErrorExit(&param.loc,
-                                  "RGB reflectance parameter \"%s\" has "
-                                  "parameter outside of [0,1].",
+                if (rgb.r < 0 || rgb.g < 0 || rgb.b < 0)
+                    ErrorExit(loc, "RGB parameter \"%s\" has negative component.",
+                              param.name);
+                if (spectrumType == SpectrumType::Albedo) {
+                    if (rgb.r > 1 || rgb.g > 1 || rgb.b > 1)
+                        ErrorExit(loc, "RGB parameter \"%s\" has > 1 component.",
                                   param.name);
-                    return alloc.new_object<RGBReflectanceSpectrum>(cs, rgb);
+                    return alloc.new_object<RGBAlbedoSpectrum>(cs, rgb);
+                } else if (spectrumType == SpectrumType::Unbounded) {
+                    return alloc.new_object<RGBUnboundedSpectrum>(cs, rgb);
                 } else {
-                    CHECK(spectrumType == SpectrumType::General);
-                    if (std::min({v[0], v[1], v[2]}) < 0)
-                        ErrorExit(&param.loc,
-                                  "RGB parameter \"%s\" has negative component value.");
-                    return alloc.new_object<RGBSpectrum>(cs, rgb);
+                    CHECK(spectrumType == SpectrumType::Illuminant);
+                    return alloc.new_object<RGBIlluminantSpectrum>(cs, rgb);
                 }
             });
     else if (param.type == "blackbody")
@@ -684,11 +683,9 @@ const FileLoc *ParameterDictionary::loc(const std::string &name) const {
 }
 
 // TextureParameterDictionary Method Definitions
-TextureParameterDictionary::TextureParameterDictionary(
-    const ParameterDictionary *dict,
-    const std::map<std::string, FloatTextureHandle> *floatTextures,
-    const std::map<std::string, SpectrumTextureHandle> *spectrumTextures)
-    : dict(dict), floatTextures(floatTextures), spectrumTextures(spectrumTextures) {}
+TextureParameterDictionary::TextureParameterDictionary(const ParameterDictionary *dict,
+                                                       const NamedTextures *textures)
+    : dict(dict), textures(textures) {}
 
 Float TextureParameterDictionary::GetOneFloat(const std::string &name, Float def) const {
     return dict->GetOneFloat(name, def);
@@ -802,6 +799,12 @@ SpectrumTextureHandle TextureParameterDictionary::GetSpectrumTexture(
 
 SpectrumTextureHandle TextureParameterDictionary::GetSpectrumTextureOrNull(
     const std::string &name, SpectrumType spectrumType, Allocator alloc) const {
+    const auto &spectrumTextures = (spectrumType == SpectrumType::Unbounded)
+                                       ? textures->unboundedSpectrumTextures
+                                       : ((spectrumType == SpectrumType::Albedo)
+                                              ? textures->albedoSpectrumTextures
+                                              : textures->illuminantSpectrumTextures);
+
     for (const ParsedParameter *p : dict->params) {
         if (p->name != name)
             continue;
@@ -816,8 +819,8 @@ SpectrumTextureHandle TextureParameterDictionary::GetSpectrumTextureOrNull(
                           name);
 
             p->lookedUp = true;
-            auto iter = spectrumTextures->find(p->strings[0]);
-            if (iter != spectrumTextures->end())
+            auto iter = spectrumTextures.find(p->strings[0]);
+            if (iter != spectrumTextures.end())
                 return iter->second;
 
             ErrorExit(&p->loc,
@@ -832,16 +835,22 @@ SpectrumTextureHandle TextureParameterDictionary::GetSpectrumTextureOrNull(
 
             RGB rgb(p->numbers[0], p->numbers[1], p->numbers[2]);
             if (rgb.r < 0 || rgb.g < 0 || rgb.b < 0)
-                ErrorExit(&p->loc,
-                          "Negative value provided for \"rgb\" parameter \"%s\".",
+                ErrorExit(&p->loc, "Negative value provided for RGB parameter \"%s\".",
                           p->name);
-            if (spectrumType == SpectrumType::General)
-                return alloc.new_object<RGBConstantTexture>(*dict->ColorSpace(), rgb);
+            SpectrumHandle s;
+            if (spectrumType == SpectrumType::Illuminant)
+                s = alloc.new_object<RGBIlluminantSpectrum>(*dict->ColorSpace(), rgb);
+            else if (spectrumType == SpectrumType::Unbounded)
+                s = alloc.new_object<RGBUnboundedSpectrum>(*dict->ColorSpace(), rgb);
             else {
-                CHECK(spectrumType == SpectrumType::Reflectance);
-                return alloc.new_object<RGBReflectanceConstantTexture>(
-                    *dict->ColorSpace(), rgb);
+                CHECK(spectrumType == SpectrumType::Albedo);
+                if (rgb.r > 1 || rgb.g > 1 || rgb.b > 1)
+                    ErrorExit(&p->loc,
+                              "RGB parameter \"%s\" used as an albedo has > 1 component.",
+                              p->name);
+                s = alloc.new_object<RGBAlbedoSpectrum>(*dict->ColorSpace(), rgb);
             }
+            return alloc.new_object<SpectrumConstantTexture>(s);
         } else if (p->type == "spectrum" || p->type == "blackbody") {
             SpectrumHandle s = GetOneSpectrum(name, nullptr, spectrumType, alloc);
             CHECK(s != nullptr);
@@ -875,8 +884,8 @@ FloatTextureHandle TextureParameterDictionary::GetFloatTextureOrNull(
                           name);
 
             p->lookedUp = true;
-            auto iter = floatTextures->find(p->strings[0]);
-            if (iter != floatTextures->end())
+            auto iter = textures->floatTextures.find(p->strings[0]);
+            if (iter != textures->floatTextures.end())
                 return iter->second;
 
             ErrorExit(&p->loc,

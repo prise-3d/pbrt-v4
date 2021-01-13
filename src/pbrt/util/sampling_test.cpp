@@ -14,7 +14,6 @@
 #include <pbrt/util/print.h>
 #include <pbrt/util/rng.h>
 #include <pbrt/util/sampling.h>
-#include <pbrt/util/shuffle.h>
 
 #include <algorithm>
 #include <array>
@@ -142,34 +141,6 @@ TEST(Sampling, InvertUniformDiskConcentric) {
 TEST(LowDiscrepancy, RadicalInverse) {
     for (int a = 0; a < 1024; ++a) {
         EXPECT_EQ(ReverseBits32(a) * 2.3283064365386963e-10f, RadicalInverse(0, a));
-    }
-}
-
-TEST(LowDiscrepancy, GeneratorMatrix) {
-    uint32_t C[32];
-    uint32_t Crev[32];
-    // Identity matrix, column-wise
-    for (int i = 0; i < 32; ++i) {
-        C[i] = 1 << i;
-        Crev[i] = ReverseBits32(C[i]);
-    }
-
-    for (int a = 0; a < 128; ++a) {
-        // Make sure identity generator matrix matches van der Corput
-        EXPECT_EQ(a, MultiplyGenerator(C, a));
-        EXPECT_EQ(RadicalInverse(0, a),
-                  ReverseBits32(MultiplyGenerator(C, a)) * 2.3283064365386963e-10f);
-        EXPECT_EQ(RadicalInverse(0, a), SampleGeneratorMatrix(Crev, a));
-    }
-
-    // Random / goofball generator matrix
-    RNG rng;
-    for (int i = 0; i < 32; ++i) {
-        C[i] = rng.Uniform<uint32_t>();
-        Crev[i] = ReverseBits32(C[i]);
-    }
-    for (int a = 0; a < 1024; ++a) {
-        EXPECT_EQ(ReverseBits32(MultiplyGenerator(C, a)), MultiplyGenerator(Crev, a));
     }
 }
 
@@ -374,6 +345,19 @@ TEST(PiecewiseConstant1D, InverseRandoms) {
     }
 }
 
+TEST(PiecewiseConstant1D, Integral) {
+    std::vector<Float> values{Float(1), Float(0.5), Float(0), Float(0.25)};
+
+    PiecewiseConstant1D dist(values);
+    EXPECT_EQ(0.4375f, dist.Integral());
+
+    PiecewiseConstant1D dist2(values, 0, 4);
+    EXPECT_EQ(1.75f, dist2.Integral());
+
+    PiecewiseConstant1D dist3(values, -3, 5);
+    EXPECT_EQ(3.5f, dist3.Integral());
+}
+
 TEST(PiecewiseConstant2D, InverseUniform) {
     std::vector<Float> values = {Float(1), Float(1), Float(1),
                                  Float(1), Float(1), Float(1)};
@@ -437,6 +421,23 @@ TEST(PiecewiseConstant2D, FromFuncLInfinity) {
         Float(Sqr(0.75) * Float(1)),   Float(Sqr(1) * Float(1))};
     PiecewiseConstant2D dExact(exact, 4, 2);
     PiecewiseConstant2D::TestCompareDistributions(dSampled, dExact);
+}
+
+TEST(PiecewiseConstant2D, Integral) {
+    std::vector<Float> values{Float(1), Float(2), Float(0), Float(7),
+                              Float(3), Float(1), Float(2), Float(0)};
+
+    PiecewiseConstant2D dist(values, 4, 2);
+    EXPECT_EQ(2, dist.Integral());
+
+    PiecewiseConstant2D dist2(values, 2, 4);
+    EXPECT_EQ(2, dist2.Integral());
+
+    PiecewiseConstant2D dist3(values, 4, 2, Bounds2f(Point2f(0, 0), Point2f(4, 2)));
+    EXPECT_EQ(16, dist3.Integral());
+
+    PiecewiseConstant2D dist4(values, 4, 2, Bounds2f(Point2f(-1, 0), Point2f(0, 4)));
+    EXPECT_EQ(8, dist4.Integral());
 }
 
 TEST(Sampling, SphericalTriangle) {
@@ -520,7 +521,7 @@ TEST(Sampling, SphericalQuad) {
     Float sphSum = 0, areaSum = 0;
     for (Point2f u : Hammersley2D(count)) {
         Float pdf;
-        Point3f pq = SampleSphericalQuad(p, v[0], v[1] - v[0], v[2] - v[0], u, &pdf);
+        Point3f pq = SampleSphericalRectangle(p, v[0], v[1] - v[0], v[2] - v[0], u, &pdf);
         sphSum += f(pq) / pdf;
 
         pq = Lerp(u[1], Lerp(u[0], v[0], v[1]), Lerp(u[0], v[2], v[3]));
@@ -542,8 +543,8 @@ TEST(Sampling, SphericalQuadInverse) {
     Vector3f ex( 0, 3, 0), ey( -2, 0, 3);
     Point2f u(0.031906128, 0.82836914);
 
-    Point3f pq = SampleSphericalQuad(p, s, ex, ey, u);
-    Point2f ui = InvertSphericalQuadSample(p, s, ex, ey, pq);
+    Point3f pq = SampleSphericalRectangle(p, s, ex, ey, u);
+    Point2f ui = InvertSphericalRectangleSample(p, s, ex, ey, pq);
     EXPECT_EQ(u, ui);
     }
 
@@ -551,8 +552,8 @@ TEST(Sampling, SphericalQuadInverse) {
         Point3f p(-1.8413692, 3.8777208, 9.158957), s( 6, 4, -2);
         Vector3f ex(0, -3, 0), ey( -2, 0, 3);
         Point2f u (0.11288452, 0.40319824 );
-        Point3f pq = SampleSphericalQuad(p, s, ex, ey, u);
-        Point2f ui = InvertSphericalQuadSample(p, s, ex, ey, pq);
+        Point3f pq = SampleSphericalRectangle(p, s, ex, ey, u);
+        Point2f ui = InvertSphericalRectangleSample(p, s, ex, ey, pq);
         EXPECT_EQ(u, ui);
     }
 //CO    return;
@@ -571,14 +572,14 @@ TEST(Sampling, SphericalQuadInverse) {
                   Lerp(rng.Uniform<Float>(), -10, 10),
                   Lerp(rng.Uniform<Float>(), -10, 10));
         Float pdf;
-        Point3f pq = SampleSphericalQuad(p, v[a][b], v[!a][b] - v[a][b],
+        Point3f pq = SampleSphericalRectangle(p, v[a][b], v[!a][b] - v[a][b],
                                          v[a][!b] - v[a][b], u, &pdf);
 
         Float solidAngle = 1 / pdf;
         if (solidAngle < .01)
             continue;
         ++nTested;
-        Point2f ui = InvertSphericalQuadSample(p, v[a][b], v[!a][b] - v[a][b],
+        Point2f ui = InvertSphericalRectangleSample(p, v[a][b], v[!a][b] - v[a][b],
                                                v[a][!b] - v[a][b], pq);
 
         auto err = [](Float a, Float ref) {
@@ -982,22 +983,6 @@ TEST(VarianceEstimator, MergeTwo) {
     EXPECT_LT(varError, 1e-5);
 }
 
-// Make sure that the permute function is in fact a valid permutation.
-TEST(Sampling, PermutationElement) {
-    for (int len = 2; len < 1024; ++len) {
-        for (int iter = 0; iter < 10; ++iter) {
-            std::vector<bool> seen(len, false);
-
-            for (int i = 0; i < len; ++i) {
-                int offset = PermutationElement(i, len, iter);
-                ASSERT_TRUE(offset >= 0 && offset < seen.size()) << offset;
-                EXPECT_FALSE(seen[offset]);
-                seen[offset] = true;
-            }
-        }
-    }
-}
-
 TEST(WeightedReservoir, Basic) {
     RNG rng;
     constexpr int n = 16;
@@ -1258,11 +1243,11 @@ TEST(SummedArea, Constant) {
 
     SummedAreaTable sat(v);
 
-    EXPECT_EQ(1, sat.Sum(Bounds2f(Point2f(0, 0), Point2f(1, 1))));
-    EXPECT_EQ(0.5, sat.Sum(Bounds2f(Point2f(0, 0), Point2f(1, 0.5))));
-    EXPECT_EQ(0.5, sat.Sum(Bounds2f(Point2f(0, 0), Point2f(0.5, 1))));
-    EXPECT_EQ(3. / 16., sat.Sum(Bounds2f(Point2f(0, 0), Point2f(.25, .75))));
-    EXPECT_EQ(3. / 16., sat.Sum(Bounds2f(Point2f(0.5, 0.25), Point2f(0.75, 1))));
+    EXPECT_EQ(1, sat.Integral(Bounds2f(Point2f(0, 0), Point2f(1, 1))));
+    EXPECT_EQ(0.5, sat.Integral(Bounds2f(Point2f(0, 0), Point2f(1, 0.5))));
+    EXPECT_EQ(0.5, sat.Integral(Bounds2f(Point2f(0, 0), Point2f(0.5, 1))));
+    EXPECT_EQ(3. / 16., sat.Integral(Bounds2f(Point2f(0, 0), Point2f(.25, .75))));
+    EXPECT_EQ(3. / 16., sat.Integral(Bounds2f(Point2f(0.5, 0.25), Point2f(0.75, 1))));
 }
 
 TEST(SummedArea, Rect) {
@@ -1286,7 +1271,7 @@ TEST(SummedArea, Rect) {
 
                     Bounds2f b(Point2f(Float(x0) / v.xSize(), Float(y0) / v.ySize()),
                                Point2f(Float(x1) / v.xSize(), Float(y1) / v.ySize()));
-                    EXPECT_EQ(mySum / (v.xSize() * v.ySize()), sat.Sum(b));
+                    EXPECT_EQ(mySum / (v.xSize() * v.ySize()), sat.Integral(b));
                 }
 }
 
@@ -1315,7 +1300,7 @@ TEST(SummedArea, Randoms) {
                 ref += v[p];
             ref /= v.xSize() * v.ySize();
 
-            double s = sat.Sum(bf);
+            double s = sat.Integral(bf);
             if (ref != s)
                 EXPECT_LT(std::abs((ref - s) / ref), 1e-3f)
                     << StringPrintf("ref %f s %f", ref, s);
@@ -1347,7 +1332,7 @@ TEST(SummedArea, NonCellAligned) {
         }
         Float sampledResult = sampledSum * b.Area() / nSamples;
 
-        double s = sat.Sum(b);
+        double s = sat.Integral(b);
         if (sampledResult != s)
             EXPECT_LT(std::abs((sampledResult - s) / sampledResult), 1e-3f)
                 << StringPrintf("sampled %f s %f", sampledResult, s);

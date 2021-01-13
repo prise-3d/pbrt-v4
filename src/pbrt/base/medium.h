@@ -19,10 +19,9 @@ namespace pbrt {
 
 // PhaseFunctionSample Definition
 struct PhaseFunctionSample {
-    PBRT_CPU_GPU operator bool() const { return pdf > 0; }
     Float p;
     Vector3f wi;
-    Float pdf = 0;
+    Float pdf;
 };
 
 // PhaseFunctionHandle Definition
@@ -35,22 +34,28 @@ class PhaseFunctionHandle : public TaggedPointer<HGPhaseFunction> {
 
     std::string ToString() const;
 
-    PBRT_CPU_GPU inline Float p(const Vector3f &wo, const Vector3f &wi) const;
+    PBRT_CPU_GPU inline Float p(Vector3f wo, Vector3f wi) const;
 
-    PBRT_CPU_GPU inline PhaseFunctionSample Sample_p(const Vector3f &wo,
-                                                     const Point2f &u) const;
-    PBRT_CPU_GPU inline Float PDF(const Vector3f &wo, const Vector3f &wi) const;
+    PBRT_CPU_GPU inline pstd::optional<PhaseFunctionSample> Sample_p(Vector3f wo,
+                                                                     Point2f u) const;
+    PBRT_CPU_GPU inline Float PDF(Vector3f wo, Vector3f wi) const;
 };
 
 class HomogeneousMedium;
-template <typename DensityProvider>
-class GeneralMedium;
+template <typename Provider>
+class CuboidMedium;
 class UniformGridMediumProvider;
-using UniformGridMedium = GeneralMedium<UniformGridMediumProvider>;
+// UniformGridMedium Definition
+using UniformGridMedium = CuboidMedium<UniformGridMediumProvider>;
+
 class CloudMediumProvider;
-using CloudMedium = GeneralMedium<CloudMediumProvider>;
+// CloudMedium Definition
+using CloudMedium = CuboidMedium<CloudMediumProvider>;
+
 class NanoVDBMediumProvider;
-using NanoVDBMedium = GeneralMedium<NanoVDBMediumProvider>;
+// NanoVDBMedium Definition
+using NanoVDBMedium = CuboidMedium<NanoVDBMediumProvider>;
+
 struct MediumSample;
 
 // MediumHandle Definition
@@ -67,11 +72,12 @@ class MediumHandle : public TaggedPointer<HomogeneousMedium, UniformGridMedium,
 
     std::string ToString() const;
 
-    template <typename F>
-    PBRT_CPU_GPU void SampleTmaj(const Ray &ray, Float tMax, RNG &rng,
-                                 const SampledWavelengths &lambda, F callback) const;
-
     bool IsEmissive() const;
+
+    template <typename F>
+    PBRT_CPU_GPU SampledSpectrum SampleTmaj(Ray ray, Float tMax, Float u, RNG &rng,
+                                            const SampledWavelengths &lambda,
+                                            F callback) const;
 };
 
 // MediumInterface Definition

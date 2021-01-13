@@ -62,6 +62,11 @@ class CameraTransform {
     }
 
     PBRT_CPU_GPU
+    Normal3f RenderFromCamera(const Normal3f &n, Float time) const {
+        return renderFromCamera(n, time);
+    }
+
+    PBRT_CPU_GPU
     Ray RenderFromCamera(const Ray &r) const { return renderFromCamera(r); }
 
     PBRT_CPU_GPU
@@ -74,6 +79,17 @@ class CameraTransform {
         return renderFromCamera.ApplyInverse(v, time);
     }
 
+    PBRT_CPU_GPU
+    Normal3f CameraFromRender(const Normal3f &v, Float time) const {
+        return renderFromCamera.ApplyInverse(v, time);
+    }
+
+    PBRT_CPU_GPU
+    const AnimatedTransform &RenderFromCamera() const { return renderFromCamera; }
+
+    PBRT_CPU_GPU
+    const Transform &WorldFromRender() const { return worldFromRender; }
+
     std::string ToString() const;
 
   private:
@@ -84,7 +100,7 @@ class CameraTransform {
 
 // CameraWiSample Definition
 struct CameraWiSample {
-  public:
+    // CameraWiSample Public Methods
     CameraWiSample() = default;
     PBRT_CPU_GPU
     CameraWiSample(const SampledSpectrum &Wi, const Vector3f &wi, Float pdf,
@@ -135,7 +151,7 @@ class CameraBase {
     Float SampleTime(Float u) const { return Lerp(u, shutterOpen, shutterClose); }
 
     PBRT_CPU_GPU
-    void ApproximatedPdxy(const SurfaceInteraction &si) const;
+    void ApproximatedPdxy(SurfaceInteraction &si, int samplesPerPixel) const;
     void InitMetadata(ImageMetadata *metadata) const;
     std::string ToString() const;
 
@@ -172,12 +188,22 @@ class CameraBase {
     }
 
     PBRT_CPU_GPU
+    Normal3f RenderFromCamera(const Normal3f &v, Float time) const {
+        return cameraTransform.RenderFromCamera(v, time);
+    }
+
+    PBRT_CPU_GPU
     Point3f RenderFromCamera(const Point3f &p, Float time) const {
         return cameraTransform.RenderFromCamera(p, time);
     }
 
     PBRT_CPU_GPU
     Vector3f CameraFromRender(const Vector3f &v, Float time) const {
+        return cameraTransform.CameraFromRender(v, time);
+    }
+
+    PBRT_CPU_GPU
+    Normal3f CameraFromRender(const Normal3f &v, Float time) const {
         return cameraTransform.CameraFromRender(v, time);
     }
 
@@ -269,7 +295,7 @@ class OrthographicCamera : public ProjectiveCamera {
     }
 
     PBRT_CPU_GPU
-    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, const Point2f &sample,
+    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, Point2f u,
                                             SampledWavelengths &lambda) const {
         LOG_FATAL("SampleWi() unimplemented for OrthographicCamera");
         return {};
@@ -286,8 +312,8 @@ class OrthographicCamera : public ProjectiveCamera {
 class PerspectiveCamera : public ProjectiveCamera {
   public:
     // PerspectiveCamera Public Methods
-    PerspectiveCamera(CameraBaseParameters baseParameters, const Bounds2f &screenWindow,
-                      Float lensRadius, Float focalDistance, Float fov)
+    PerspectiveCamera(CameraBaseParameters baseParameters, Float fov,
+                      const Bounds2f &screenWindow, Float lensRadius, Float focalDistance)
         : ProjectiveCamera(baseParameters, Perspective(fov, 1e-2f, 1000.f), screenWindow,
                            lensRadius, focalDistance) {
         // Compute differential changes in origin for perspective camera rays
@@ -303,7 +329,7 @@ class PerspectiveCamera : public ProjectiveCamera {
         cosTotalWidth = wCornerCamera.z;
         DCHECK_LT(.9999 * cosTotalWidth, std::cos(Radians(fov / 2)));
 
-        // Compute image plane bounds at $z=1$ for _PerspectiveCamera_
+        // Compute image plane area at $z=1$ for _PerspectiveCamera_
         Point2i res = film.FullResolution();
         Point3f pMin = cameraFromRaster(Point3f(0, 0, 0));
         Point3f pMax = cameraFromRaster(Point3f(res.x, res.y, 0));
@@ -336,7 +362,7 @@ class PerspectiveCamera : public ProjectiveCamera {
     PBRT_CPU_GPU
     void PDF_We(const Ray &ray, Float *pdfPos, Float *pdfDir) const;
     PBRT_CPU_GPU
-    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, const Point2f &sample,
+    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, Point2f u,
                                             SampledWavelengths &lambda) const;
 
     std::string ToString() const;
@@ -389,7 +415,7 @@ class SphericalCamera : public CameraBase {
     }
 
     PBRT_CPU_GPU
-    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, const Point2f &sample,
+    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, Point2f u,
                                             SampledWavelengths &lambda) const {
         LOG_FATAL("SampleWi() unimplemented for SphericalCamera");
         return {};
@@ -438,7 +464,7 @@ class RealisticCamera : public CameraBase {
     }
 
     PBRT_CPU_GPU
-    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, const Point2f &sample,
+    pstd::optional<CameraWiSample> SampleWi(const Interaction &ref, Point2f u,
                                             SampledWavelengths &lambda) const {
         LOG_FATAL("SampleWi() unimplemented for RealisticCamera");
         return {};

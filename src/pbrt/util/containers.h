@@ -29,43 +29,31 @@ struct TypePack {
 };
 
 // TypePack Operations
-template <typename F, typename... Ts>
-void ForEachType(F func, TypePack<Ts...>);
-
-template <typename F>
-void ForEachType(F func, TypePack<>) {}
-
-template <typename F, typename T, typename... Ts>
-void ForEachType(F func, TypePack<T, Ts...>) {
-    func.template operator()<T>();
-    ForEachType(func, TypePack<Ts...>());
-}
-
-template <typename T>
-struct MaxSize;
-template <typename T>
-struct MaxSize<TypePack<T>> {
-    static constexpr size_t size = sizeof(T);
-};
 template <typename T, typename... Ts>
-struct MaxSize<TypePack<T, Ts...>> {
-    static constexpr size_t size = (sizeof(T) > MaxSize<TypePack<Ts...>>::size)
-                                       ? sizeof(T)
-                                       : MaxSize<TypePack<Ts...>>::size;
+struct IndexOf {
+    static constexpr int count = 0;
+    static_assert(!std::is_same_v<T, T>, "Type not present in TypePack");
 };
 
-template <typename... Ts>
-struct Prepend;
 template <typename T, typename... Ts>
-struct Prepend<T, TypePack<Ts...>> {
-    using type = TypePack<T, Ts...>;
+struct IndexOf<T, TypePack<T, Ts...>> {
+    static constexpr int count = 0;
 };
 
-template <typename T>
-struct RemoveFirst {};
+template <typename T, typename U, typename... Ts>
+struct IndexOf<T, TypePack<U, Ts...>> {
+    static constexpr int count = 1 + IndexOf<T, TypePack<Ts...>>::count;
+};
+
 template <typename T, typename... Ts>
-struct RemoveFirst<TypePack<T, Ts...>> {
-    using type = TypePack<Ts...>;
+struct HasType {
+    static constexpr bool value = false;
+};
+
+template <typename T, typename Tfirst, typename... Ts>
+struct HasType<T, TypePack<Tfirst, Ts...>> {
+    static constexpr bool value =
+        (std::is_same<T, Tfirst>::value || HasType<T, TypePack<Ts...>>::value);
 };
 
 template <typename T>
@@ -75,15 +63,34 @@ struct GetFirst<TypePack<T, Ts...>> {
     using type = T;
 };
 
+template <typename T>
+struct RemoveFirst {};
+template <typename T, typename... Ts>
+struct RemoveFirst<TypePack<T, Ts...>> {
+    using type = TypePack<Ts...>;
+};
+
 template <int index, typename T, typename... Ts>
 struct RemoveFirstN;
 template <int index, typename T, typename... Ts>
 struct RemoveFirstN<index, TypePack<T, Ts...>> {
     using type = typename RemoveFirstN<index - 1, TypePack<Ts...>>::type;
 };
+
 template <typename T, typename... Ts>
 struct RemoveFirstN<0, TypePack<T, Ts...>> {
     using type = TypePack<T, Ts...>;
+};
+
+template <typename... Ts>
+struct Prepend;
+template <typename T, typename... Ts>
+struct Prepend<T, TypePack<Ts...>> {
+    using type = TypePack<T, Ts...>;
+};
+template <typename... Ts>
+struct Prepend<void, TypePack<Ts...>> {
+    using type = TypePack<Ts...>;
 };
 
 template <int index, typename T, typename... Ts>
@@ -98,23 +105,66 @@ struct TakeFirstN<1, TypePack<T, Ts...>> {
     using type = TypePack<T>;
 };
 
-template <typename T, typename... Ts>
-struct HasType {};
+template <template <typename> class M, typename... Ts>
+struct MapType;
+template <template <typename> class M, typename T>
+struct MapType<M, TypePack<T>> {
+    using type = TypePack<M<T>>;
+};
+
+template <template <typename> class M, typename T, typename... Ts>
+struct MapType<M, TypePack<T, Ts...>> {
+    using type = typename Prepend<M<T>, typename MapType<M, TypePack<Ts...>>::type>::type;
+};
+
+template <template <typename> class Pred, typename... Ts>
+struct FilterTypes;
+
+namespace internal {
+
+template <typename T, bool>
+struct FilterTypesHelper;
+
 template <typename T>
-struct HasType<T, TypePack<void>> {
-    static constexpr bool value = false;
+struct FilterTypesHelper<T, true> {
+    using type = T;
 };
-template <typename T, typename Tfirst, typename... Ts>
-struct HasType<T, TypePack<Tfirst, Ts...>> {
-    static constexpr bool value =
-        (std::is_same<T, Tfirst>::value || HasType<T, TypePack<Ts...>>::value);
+template <typename T>
+struct FilterTypesHelper<T, false> {
+    using type = void;
 };
+
+};  // namespace internal
+
+template <template <typename> class Pred, typename T>
+struct FilterTypes<Pred, TypePack<T>> {
+    using type = typename TypePack<
+        typename internal::FilterTypesHelper<T, Pred<T>::value>::type>::type;
+};
+
+template <template <typename> class Pred, typename T, typename... Ts>
+struct FilterTypes<Pred, TypePack<T, Ts...>> {
+    using type =
+        typename Prepend<typename internal::FilterTypesHelper<T, Pred<T>::value>::type,
+                         TypePack<Ts...>>::type;
+};
+
+template <typename F, typename... Ts>
+void ForEachType(F func, TypePack<Ts...>);
+template <typename F, typename T, typename... Ts>
+void ForEachType(F func, TypePack<T, Ts...>) {
+    func.template operator()<T>();
+    ForEachType(func, TypePack<Ts...>());
+}
+
+template <typename F>
+void ForEachType(F func, TypePack<>) {}
 
 // Array2D Definition
 template <typename T>
 class Array2D {
   public:
-    // Array2D Type Declarations
+    // Array2D Type Definitions
     using value_type = T;
     using iterator = value_type *;
     using const_iterator = const value_type *;
@@ -122,13 +172,15 @@ class Array2D {
 
     // Array2D Public Methods
     Array2D(allocator_type allocator = {}) : Array2D({{0, 0}, {0, 0}}, allocator) {}
-    Array2D(const Bounds2i &extent, allocator_type allocator = {})
+
+    Array2D(const Bounds2i &extent, Allocator allocator = {})
         : extent(extent), allocator(allocator) {
         int n = extent.Area();
         values = allocator.allocate_object<T>(n);
         for (int i = 0; i < n; ++i)
             allocator.construct(values + i);
     }
+
     Array2D(const Bounds2i &extent, T def, allocator_type allocator = {})
         : Array2D(extent, allocator) {
         std::fill(begin(), end(), def);
@@ -225,6 +277,7 @@ class Array2D {
     iterator begin() { return values; }
     PBRT_CPU_GPU
     iterator end() { return begin() + size(); }
+
     PBRT_CPU_GPU
     const_iterator begin() const { return values; }
     PBRT_CPU_GPU
@@ -252,7 +305,7 @@ class Array2D {
   private:
     // Array2D Private Members
     Bounds2i extent;
-    allocator_type allocator;
+    Allocator allocator;
     T *values;
 };
 
@@ -590,6 +643,7 @@ template <typename Key, typename Value, typename Hash,
               pstd::pmr::polymorphic_allocator<pstd::optional<std::pair<Key, Value>>>>
 class HashMap {
   public:
+    // HashMap Type Definitions
     using TableEntry = pstd::optional<std::pair<Key, Value>>;
 
     class Iterator {
@@ -633,14 +687,25 @@ class HashMap {
     using iterator = Iterator;
     using const_iterator = const iterator;
 
-    HashMap(Allocator alloc) : table(8, alloc), alloc(alloc) {}
+    // HashMap Public Methods
+    PBRT_CPU_GPU
+    size_t size() const { return nStored; }
+    PBRT_CPU_GPU
+    size_t capacity() const { return table.size(); }
+    void Clear() {
+        table.clear();
+        nStored = 0;
+    }
+
+    HashMap(Allocator alloc) : table(8, alloc) {}
+
     HashMap(const HashMap &) = delete;
     HashMap &operator=(const HashMap &) = delete;
 
     void Insert(const Key &key, const Value &value) {
         size_t offset = FindOffset(key);
         if (table[offset].has_value() == false) {
-            // Not there already; possibly grow.
+            // Grow hash table if it is too full
             if (3 * ++nStored > capacity()) {
                 Grow();
                 offset = FindOffset(key);
@@ -661,49 +726,41 @@ class HashMap {
 
     PBRT_CPU_GPU
     iterator begin() {
-        Iterator iter(table.data(), table.data() + table.size());
+        Iterator iter(table.data(), table.data() + capacity());
         while (iter.ptr < iter.end && !iter.ptr->has_value())
             ++iter.ptr;
         return iter;
     }
     PBRT_CPU_GPU
     iterator end() {
-        return Iterator(table.data() + table.size(), table.data() + table.size());
+        return Iterator(table.data() + capacity(), table.data() + capacity());
     }
 
-    PBRT_CPU_GPU
-    size_t size() const { return nStored; }
-    PBRT_CPU_GPU
-    size_t capacity() const { return table.size(); }
-
-    void Clear() { table.clear(); }
-
   private:
+    // HashMap Private Methods
     PBRT_CPU_GPU
     size_t FindOffset(const Key &key) const {
         size_t baseOffset = Hash()(key) & (capacity() - 1);
         for (int nProbes = 0;; ++nProbes) {
-            // Quadratic probing.
+            // Find offset for _key_ using quadratic probing
             size_t offset =
                 (baseOffset + nProbes / 2 + nProbes * nProbes / 2) & (capacity() - 1);
-            if (table[offset].has_value() == false || key == table[offset]->first) {
+            if (table[offset].has_value() == false || key == table[offset]->first)
                 return offset;
-            }
         }
     }
 
     void Grow() {
         size_t currentCapacity = capacity();
-        pstd::vector<TableEntry> newTable(std::max<size_t>(64, 2 * currentCapacity));
-
+        pstd::vector<TableEntry> newTable(std::max<size_t>(64, 2 * currentCapacity),
+                                          table.get_allocator());
         size_t newCapacity = newTable.size();
         for (size_t i = 0; i < currentCapacity; ++i) {
+            // Insert _table[i]_ into _newTable_ if it is set
             if (!table[i].has_value())
                 continue;
-
             size_t baseOffset = Hash()(table[i]->first) & (newCapacity - 1);
             for (int nProbes = 0;; ++nProbes) {
-                // Quadratic probing.
                 size_t offset = (baseOffset + nProbes / 2 + nProbes * nProbes / 2) &
                                 (newCapacity - 1);
                 if (!newTable[offset]) {
@@ -712,13 +769,12 @@ class HashMap {
                 }
             }
         }
-
         table = std::move(newTable);
     }
 
+    // HashMap Private Members
     pstd::vector<TableEntry> table;
     size_t nStored = 0;
-    Allocator alloc;
 };
 
 // SampledGrid Definition
@@ -726,7 +782,7 @@ template <typename T>
 class SampledGrid {
   public:
     using const_iterator = typename pstd::vector<T>::const_iterator;
-
+    // SampledGrid Public Methods
     SampledGrid() = default;
     SampledGrid(Allocator alloc) : values(alloc) {}
     SampledGrid(pstd::span<const T> v, int nx, int ny, int nz, Allocator alloc)
@@ -735,7 +791,6 @@ class SampledGrid {
     }
 
     size_t BytesAllocated() const { return values.size() * sizeof(T); }
-
     int xSize() const { return nx; }
     int ySize() const { return ny; }
     int zSize() const { return nz; }
@@ -743,32 +798,47 @@ class SampledGrid {
     const_iterator begin() const { return values.begin(); }
     const_iterator end() const { return values.end(); }
 
-    PBRT_CPU_GPU
-    T Lookup(const Point3f &p) const {
+    template <typename F>
+    PBRT_CPU_GPU auto Lookup(const Point3f &p, F convert) const {
         // Compute voxel coordinates and offsets for _p_
         Point3f pSamples(p.x * nx - .5f, p.y * ny - .5f, p.z * nz - .5f);
         Point3i pi = (Point3i)Floor(pSamples);
         Vector3f d = pSamples - (Point3f)pi;
 
-        // Trilinearly interpolate density values to compute local density
-        T d00 = Lerp(d.x, Lookup(pi), Lookup(pi + Vector3i(1, 0, 0)));
-        T d10 = Lerp(d.x, Lookup(pi + Vector3i(0, 1, 0)), Lookup(pi + Vector3i(1, 1, 0)));
-        T d01 = Lerp(d.x, Lookup(pi + Vector3i(0, 0, 1)), Lookup(pi + Vector3i(1, 0, 1)));
-        T d11 = Lerp(d.x, Lookup(pi + Vector3i(0, 1, 1)), Lookup(pi + Vector3i(1, 1, 1)));
-        T d0 = Lerp(d.y, d00, d10);
-        T d1 = Lerp(d.y, d01, d11);
+        // Return trilinearly interpolated voxel values
+        auto d00 =
+            Lerp(d.x, Lookup(pi, convert), Lookup(pi + Vector3i(1, 0, 0), convert));
+        auto d10 = Lerp(d.x, Lookup(pi + Vector3i(0, 1, 0), convert),
+                        Lookup(pi + Vector3i(1, 1, 0), convert));
+        auto d01 = Lerp(d.x, Lookup(pi + Vector3i(0, 0, 1), convert),
+                        Lookup(pi + Vector3i(1, 0, 1), convert));
+        auto d11 = Lerp(d.x, Lookup(pi + Vector3i(0, 1, 1), convert),
+                        Lookup(pi + Vector3i(1, 1, 1), convert));
+        auto d0 = Lerp(d.y, d00, d10);
+        auto d1 = Lerp(d.y, d01, d11);
         return Lerp(d.z, d0, d1);
     }
 
     PBRT_CPU_GPU
-    T Lookup(const Point3i &p) const {
-        Bounds3i sampleBounds(Point3i(0, 0, 0), Point3i(nx, ny, nz));
-        if (!InsideExclusive(p, sampleBounds))
-            return {};
-        return values[(p.z * ny + p.y) * nx + p.x];
+    T Lookup(const Point3f &p) const {
+        return Lookup(p, [] PBRT_CPU_GPU(T value) { return value; });
     }
 
-    T MaximumValue(const Bounds3f &bounds) const {
+    template <typename F>
+    PBRT_CPU_GPU auto Lookup(const Point3i &p, F convert) const {
+        Bounds3i sampleBounds(Point3i(0, 0, 0), Point3i(nx, ny, nz));
+        if (!InsideExclusive(p, sampleBounds))
+            return convert(T{});
+        return convert(values[(p.z * ny + p.y) * nx + p.x]);
+    }
+
+    PBRT_CPU_GPU
+    T Lookup(const Point3i &p) const {
+        return Lookup(p, [] PBRT_CPU_GPU(T value) { return value; });
+    }
+
+    template <typename F>
+    Float MaxValue(const Bounds3f &bounds, F convert) const {
         Point3f ps[2] = {Point3f(bounds.pMin.x * nx - .5f, bounds.pMin.y * ny - .5f,
                                  bounds.pMin.z * nz - .5f),
                          Point3f(bounds.pMax.x * nx - .5f, bounds.pMax.y * ny - .5f,
@@ -777,15 +847,17 @@ class SampledGrid {
                          Min(Point3i(Floor(ps[1])) + Vector3i(1, 1, 1),
                              Point3i(nx - 1, ny - 1, nz - 1))};
 
-        T maxValue = Lookup(Point3i(pi[0]));
+        Float maxValue = Lookup(Point3i(pi[0]), convert);
         for (int z = pi[0].z; z <= pi[1].z; ++z)
             for (int y = pi[0].y; y <= pi[1].y; ++y)
-                for (int x = pi[0].x; x <= pi[1].x; ++x) {
-                    using std::max;
-                    maxValue = max(maxValue, Lookup(Point3i(x, y, z)));
-                }
+                for (int x = pi[0].x; x <= pi[1].x; ++x)
+                    maxValue = std::max(maxValue, Lookup(Point3i(x, y, z), convert));
 
         return maxValue;
+    }
+
+    T MaxValue(const Bounds3f &bounds) const {
+        return MaxValue(bounds, [](T value) { return value; });
     }
 
     std::string ToString() const {
@@ -794,6 +866,7 @@ class SampledGrid {
     }
 
   private:
+    // SampledGrid Private Members
     pstd::vector<T> values;
     int nx, ny, nz;
 };
