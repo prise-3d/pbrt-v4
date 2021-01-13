@@ -33,6 +33,12 @@ Extended command line parameter:
 - `monk`: {unsigned} -- use of Median of meaNs estimator instead of classical mean ;
 - `pakmon`: {bool} -- specify if PakMoN extension is used or not [0, 1].
 
+
+TODO:
+- `independent`: {bool} -- adapt to GPU ; 
+- `monk`: {unsigned} -- adapt to GPU ; 
+- `pakmon`: {unsigned} -- adapt to GPU.
+
 Features
 --------
 

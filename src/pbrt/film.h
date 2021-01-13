@@ -364,13 +364,13 @@ class RGBFilm : public FilmBase {
             // Computation of PakMON using \alpha and \kappa value
             unsigned middleIndex = int(nElements / 2);
 
-            // alpha and kappa automatically set value
+            // alpha and rho automatically set value
             Float alpha = distancesEntropy;
-            unsigned kappa = (unsigned)(middleIndex * distancesEntropy) - 1;
+            unsigned rho = (unsigned)(middleIndex * distancesEntropy) - 1;
 
             // std::cout << "-----------------------------------------" << std::endl;
             // std::cout << "=> Alpha value is: " << alpha << std::endl;
-            // std::cout << "=> Kappa value is: " << kappa << std::endl;
+            // std::cout << "=> Kappa value is: " << rho << std::endl;
 
             // now add of neighborhood information using previous defined params
             // sum_to_divide = 1
@@ -408,7 +408,7 @@ class RGBFilm : public FilmBase {
             // std::cout << "MON value is: " << (mean / weight) << std::endl;
 
             // use of `vp` which stores ordered mean and 
-            for (int i = 1; i < kappa + 1; i++) {
+            for (int i = 1; i < rho + 1; i++) {
 
                 // current neighbor multiple factor
                 Float multFactor = pow(alpha, i);
