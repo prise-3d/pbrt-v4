@@ -356,7 +356,6 @@ class RGBFilm : public FilmBase {
                     // add new 
                     distances.push_back(var);
                 }
-               
             }
 
             // use of variance evolution and compute entropy
