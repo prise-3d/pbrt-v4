@@ -183,6 +183,7 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "folder", &options.folderName, onError) ||
             ParseArg(&argv, "monk", &options.monk, onError) ||
             ParseArg(&argv, "pakmon", &options.pakmon, onError) ||
+            ParseArg(&argv, "independent", &options.independent, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
             ParseArg(&argv, "upgrade", &options.upgrade, onError)) {
             // success

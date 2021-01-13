@@ -134,12 +134,165 @@ void ImageTileIntegrator::Render() {
         return;
     }
 
-    // P3D updates
-    // Here add number of images to generate (use of --spp for sample per pixel)
-    for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
+    if (*Options->independent) {
+        
+        std::cout << "Independent generation of " << std::to_string(*Options->nimages) << " images" << std::endl;
+        // P3D updates
+        // Here add number of images to generate (use of --spp for sample per pixel)
+        for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
-        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+            std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
+            uint64_t randomseed;
+            randomseed = rand();
+
+            thread_local Point2i threadPixel;
+            thread_local int threadSampleIndex;
+            CheckCallbackScope _([&]() {
+                return StringPrintf("Rendering failed at pixel (%d, %d) sample %d. Debug with "
+                                    "\"--debugstart %d,%d,%d\"\n",
+                                    threadPixel.x, threadPixel.y, threadSampleIndex,
+                                    threadPixel.x, threadPixel.y, threadSampleIndex);
+            });
+
+            // Declare common variables for rendering image in tiles
+            std::vector<ScratchBuffer> scratchBuffers;
+            for (int i = 0; i < MaxThreadIndex(); ++i)
+                scratchBuffers.push_back(ScratchBuffer(65536));
+
+            // std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
+
+            // use of random seed for each image generated
+            // check if correct way to set new seed for the whole program
+            // `seed` only available for [`RamdomSampler`, `StratifiedSampler`]
+            int seed = threadPixel.x + threadPixel.y + randomseed;
+            samplerPrototype.setSeed(seed);
+
+            std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
+
+            Bounds2i pixelBounds = camera.GetFilm().PixelBounds();
+            int spp = samplerPrototype.SamplesPerPixel();
+            ProgressReporter progress(int64_t(spp) * pixelBounds.Area(), "Rendering",
+                                    Options->quiet);
+
+            int waveStart = 0, waveEnd = 1, nextWaveSize = 1;
+
+            if (Options->recordPixelStatistics)
+                StatsEnablePixelStats(pixelBounds,
+                                    RemoveExtension(camera.GetFilm().GetFilename()));
+            // Handle MSE referene image, if provided
+            pstd::optional<Image> referenceImage;
+            FILE *mseOutFile = nullptr;
+            if (!Options->mseReferenceImage.empty()) {
+                auto mse = Image::Read(Options->mseReferenceImage);
+                referenceImage = mse.image;
+
+                Bounds2i msePixelBounds =
+                    mse.metadata.pixelBounds
+                        ? *mse.metadata.pixelBounds
+                        : Bounds2i(Point2i(0, 0), referenceImage->Resolution());
+                if (!Inside(pixelBounds, msePixelBounds))
+                    ErrorExit("Output image pixel bounds %s aren't inside the MSE "
+                            "image's pixel bounds %s.",
+                            pixelBounds, msePixelBounds);
+
+                // Transform the pixelBounds of the image we're rendering to the
+                // coordinate system with msePixelBounds.pMin at the origin, which
+                // in turn gives us the section of the MSE image to crop. (This is
+                // complicated by the fact that Image doesn't support pixel
+                // bounds...)
+                Bounds2i cropBounds(Point2i(pixelBounds.pMin - msePixelBounds.pMin),
+                                    Point2i(pixelBounds.pMax - msePixelBounds.pMin));
+                *referenceImage = referenceImage->Crop(cropBounds);
+                CHECK_EQ(referenceImage->Resolution(), Point2i(pixelBounds.Diagonal()));
+
+                mseOutFile = fopen(Options->mseReferenceOutput.c_str(), "w");
+                if (!mseOutFile)
+                    ErrorExit("%s: %s", Options->mseReferenceOutput, ErrorString());
+            }
+
+            // Connect to display server if needed
+            if (!Options->displayServer.empty()) {
+                FilmHandle film = camera.GetFilm();
+                DisplayDynamic(film.GetFilename(), Point2i(pixelBounds.Diagonal()),
+                            {"R", "G", "B"},
+                            [=](Bounds2i b, pstd::span<pstd::span<Float>> displayValue) {
+                                int index = 0;
+                                for (Point2i p : b) {
+                                    RGB rgb = film.GetPixelRGB(pixelBounds.pMin + p);
+                                    for (int c = 0; c < 3; ++c)
+                                        displayValue[c][index] = rgb[c];
+                                    ++index;
+                                }
+                            });
+            }
+
+            // Render image in waves
+            while (waveStart < spp) {
+                // Render current wave's image tiles in parallel
+                ParallelFor2D(pixelBounds, [&](Bounds2i tileBounds) {
+                    // Render image tile given by _tileBounds_
+                    ScratchBuffer &scratchBuffer = scratchBuffers[ThreadIndex];
+                    SamplerHandle &sampler = samplers[ThreadIndex];
+                    PBRT_DBG("Starting image tile (%d,%d)-(%d,%d) waveStart %d, waveEnd %d\n",
+                            tileBounds.pMin.x, tileBounds.pMin.y, tileBounds.pMax.x,
+                            tileBounds.pMax.y, waveStart, waveEnd);
+                    for (Point2i pPixel : tileBounds) {
+                        StatsReportPixelStart(pPixel);
+                        threadPixel = pPixel;
+                        // Render samples in pixel _pPixel_
+                        for (int sampleIndex = waveStart; sampleIndex < waveEnd; ++sampleIndex) {
+                            threadSampleIndex = sampleIndex;
+                            sampler.StartPixelSample(pPixel, sampleIndex);
+                            EvaluatePixelSample(pPixel, sampleIndex, sampler, scratchBuffer);
+                            scratchBuffer.Reset();
+                        }
+
+                        StatsReportPixelEnd(pPixel);
+                    }
+                    PBRT_DBG("Finished image tile (%d,%d)-(%d,%d)\n", tileBounds.pMin.x,
+                            tileBounds.pMin.y, tileBounds.pMax.x, tileBounds.pMax.y);
+                    progress.Update((waveEnd - waveStart) * tileBounds.Area());
+                });
+
+                // Update start and end wave
+                waveStart = waveEnd;
+                waveEnd = std::min(spp, waveEnd + nextWaveSize);
+                if (!referenceImage)
+                    nextWaveSize = std::min(2 * nextWaveSize, 64);
+
+                // // Write current image to disk
+                // LOG_VERBOSE("Writing image with spp = %d", waveStart);
+                // ImageMetadata metadata;
+                // metadata.renderTimeSeconds = progress.ElapsedSeconds();
+                // metadata.samplesPerPixel = waveStart;
+                // if (referenceImage) {
+                //     ImageMetadata filmMetadata;
+                //     Image filmImage = camera.GetFilm().GetImage(&filmMetadata, 1.f / waveStart);
+                //     ImageChannelValues mse =
+                //         filmImage.MSE(filmImage.AllChannelsDesc(), *referenceImage);
+                //     fprintf(mseOutFile, "%d, %.9g\n", waveStart, mse.Average());
+                //     metadata.MSE = mse.Average();
+                //     fflush(mseOutFile);
+                // }
+                // camera.InitMetadata(&metadata);
+            }
+
+            ImageMetadata metadata; // by default empty metadata
+            camera.GetFilm().WriteImage(metadata, 1.0f / waveStart, i);
+
+            if (mseOutFile)
+                fclose(mseOutFile);
+            progress.Done();
+            LOG_VERBOSE("Rendering of image is finished");
+        }
+    }
+    else{
+
+        std::cout << "Dependent generation of " << std::to_string(*Options->nimages) << " images" << std::endl;
+
+        // P3D updates
+        // Here add number of images to generate (use of --spp for sample per pixel)
         uint64_t randomseed;
         randomseed = rand();
 
@@ -168,7 +321,10 @@ void ImageTileIntegrator::Render() {
         std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
 
         Bounds2i pixelBounds = camera.GetFilm().PixelBounds();
-        int spp = samplerPrototype.SamplesPerPixel();
+
+        //int spp = samplerPrototype.SamplesPerPixel();
+        int spp = *Options->nimages * *Options->pixelSamples;
+
         ProgressReporter progress(int64_t(spp) * pixelBounds.Area(), "Rendering",
                                 Options->quiet);
 
@@ -224,6 +380,11 @@ void ImageTileIntegrator::Render() {
                         });
         }
 
+        // default param
+        unsigned imageCounter = 0;
+        nextWaveSize = *Options->pixelSamples;
+        waveEnd = *Options->pixelSamples;
+
         // Render image in waves
         while (waveStart < spp) {
             // Render current wave's image tiles in parallel
@@ -255,8 +416,10 @@ void ImageTileIntegrator::Render() {
             // Update start and end wave
             waveStart = waveEnd;
             waveEnd = std::min(spp, waveEnd + nextWaveSize);
-            if (!referenceImage)
-                nextWaveSize = std::min(2 * nextWaveSize, 64);
+
+            // if (!referenceImage)
+            //     nextWaveSize = std::min(2 * nextWaveSize, 64);
+            // nextWaveSize = *Options->pixelSamples;
 
             // // Write current image to disk
             // LOG_VERBOSE("Writing image with spp = %d", waveStart);
@@ -273,10 +436,17 @@ void ImageTileIntegrator::Render() {
             //     fflush(mseOutFile);
             // }
             // camera.InitMetadata(&metadata);
-        }
 
-        ImageMetadata metadata; // by default empty metadata
-        camera.GetFilm().WriteImage(metadata, 1.0f / waveStart, i);
+            if (waveStart % *Options->pixelSamples == 0) {
+                
+                std::cout << std::endl;
+                std::cout << "Saving of image n° " + std::to_string(imageCounter + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+
+                ImageMetadata metadata; // by default empty metadata
+                camera.GetFilm().WriteImage(metadata, 1.0f / waveStart, imageCounter);
+                imageCounter++;
+            }
+        }
 
         if (mseOutFile)
             fclose(mseOutFile);
