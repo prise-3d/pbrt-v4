@@ -94,6 +94,8 @@ class HaltonSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    void setSeed(int seed) {}; // P3D updates
+
   private:
     // HaltonSampler Private Methods
     static uint64_t multiplicativeInverse(int64_t a, int64_t n) {
@@ -220,6 +222,8 @@ class PaddedSobolSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    void setSeed(int seed) {}; // P3D updates
+
   private:
     // PaddedSobolSampler Private Methods
     PBRT_CPU_GPU
@@ -333,6 +337,8 @@ class ZSobolSampler {
     PBRT_CPU_GPU
     Point2f GetPixel2D() { return Get2D(); }
 
+    void setSeed(int seed) { this->seed = seed; }; // P3D updates
+
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
@@ -443,6 +449,8 @@ class PMJ02BNSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    void setSeed(int seed) {}; // P3D updates
+
   private:
     // PMJ02BNSampler Private Members
     int samplesPerPixel, seed;
@@ -482,6 +490,11 @@ class RandomSampler {
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
+
+    // P3D updates
+    void setSeed(int seed) {
+        this->seed = seed;
+    };
 
   private:
     // RandomSampler Private Members
@@ -550,6 +563,8 @@ class SobolSampler {
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
+
+    void setSeed(int seed) {}; // P3D updates
 
   private:
     // SobolSampler Private Methods
@@ -638,6 +653,11 @@ class StratifiedSampler {
     std::vector<SamplerHandle> Clone(int n, Allocator alloc);
     std::string ToString() const;
 
+    // P3D updates
+    void setSeed(int seed) {
+        this->seed = seed;
+    };
+
   private:
     // StratifiedSampler Private Members
     int xPixelSamples, yPixelSamples, seed;
@@ -704,6 +724,9 @@ class MLTSampler {
             rng, sigma, largeStepProbability, streamCount, X, currentIteration, largeStep,
             lastLargeStepIteration, streamIndex, sampleIndex);
     }
+
+    // P3D updates
+    void setSeed(int seed) {};
 
   protected:
     // MLTSampler Private Declarations

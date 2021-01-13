@@ -20,6 +20,11 @@ std::vector<SamplerHandle> SamplerHandle::Clone(int n, Allocator alloc) {
     return DispatchCPU(clone);
 }
 
+void SamplerHandle::setSeed(int seed) {
+    auto set = [&](auto ptr) { return ptr->setSeed(seed); };
+    DispatchCPU(set);
+}
+
 std::string SamplerHandle::ToString() const {
     if (ptr() == nullptr)
         return "(nullptr)";

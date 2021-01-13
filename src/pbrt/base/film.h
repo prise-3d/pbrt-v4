@@ -41,7 +41,8 @@ class FilmHandle : public TaggedPointer<RGBFilm, GBufferFilm> {
     PBRT_CPU_GPU inline Bounds2i PixelBounds() const;
     PBRT_CPU_GPU inline Float Diagonal() const;
 
-    void WriteImage(ImageMetadata metadata, Float splatScale = 1);
+    void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
+
 
     PBRT_CPU_GPU inline RGB ToOutputRGB(const SampledSpectrum &L,
                                         const SampledWavelengths &lambda) const;

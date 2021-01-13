@@ -185,6 +185,12 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "render-coord-sys", &renderCoordSys, onError) ||
             ParseArg(&argv, "seed", &options.seed, onError) ||
             ParseArg(&argv, "spp", &options.pixelSamples, onError) ||
+            ParseArg(&argv, "nimages", &options.nimages, onError) ||
+            ParseArg(&argv, "startindex", &options.startIndex, onError) ||
+            ParseArg(&argv, "folder", &options.folderName, onError) ||
+            ParseArg(&argv, "monk", &options.monk, onError) ||
+            ParseArg(&argv, "pakmon", &options.pakmon, onError) ||
+            ParseArg(&argv, "independent", &options.independent, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||
             ParseArg(&argv, "write-partial-images", &options.writePartialImages,
                      onError) ||

@@ -596,32 +596,44 @@ void GPURender(ParsedScene &scene) {
         // kernel sufficient?
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Render!
-    Timer timer;
-    integrator->Render();
+    // P3D updates
+    // Here add number of images to generate (use of --spp for sample per pixel)
+    for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
-    LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
+        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
-    CUDA_CHECK(cudaProfilerStop());
+        uint64_t randomseed;
+        randomseed = rand();
 
-    if (!Options->quiet) {
-        ReportKernelStats();
+        integrator->sampler.setSeed(randomseed);
+        ///////////////////////////////////////////////////////////////////////////
+        // Render!
+        Timer timer;
+        integrator->Render();
 
-        Printf("GPU Statistics:\n");
-        Printf("%s\n", integrator->stats->Print());
+        LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
+
+
+        CUDA_CHECK(cudaProfilerStop());
+
+        if (!Options->quiet) {
+            ReportKernelStats();
+
+            Printf("GPU Statistics:\n");
+            Printf("%s\n", integrator->stats->Print());
+        }
+
+        std::vector<GPULogItem> logs = ReadGPULogs();
+        for (const auto &item : logs)
+            Log(item.level, item.file, item.line, item.message);
+
+        ImageMetadata metadata;
+        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+        integrator->camera.InitMetadata(&metadata);
+        metadata.renderTimeSeconds = timer.ElapsedSeconds();
+        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+        integrator->film.WriteImage(metadata);
     }
-
-    std::vector<GPULogItem> logs = ReadGPULogs();
-    for (const auto &item : logs)
-        Log(item.level, item.file, item.line, item.message);
-
-    ImageMetadata metadata;
-    metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-    integrator->camera.InitMetadata(&metadata);
-    metadata.renderTimeSeconds = timer.ElapsedSeconds();
-    metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-    integrator->film.WriteImage(metadata);
 }
 
 GPUPathIntegrator::Stats::Stats(int maxDepth, Allocator alloc)

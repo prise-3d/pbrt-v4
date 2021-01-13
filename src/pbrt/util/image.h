@@ -402,6 +402,7 @@ class Image {
     bool WriteEXR(const std::string &name, const ImageMetadata &metadata) const;
     bool WritePFM(const std::string &name, const ImageMetadata &metadata) const;
     bool WritePNG(const std::string &name, const ImageMetadata &metadata) const;
+    bool WriteRAWLS(const std::string &name, const ImageMetadata &metadata) const; // P3D updates
 
     // Image Private Members
     PixelFormat format;

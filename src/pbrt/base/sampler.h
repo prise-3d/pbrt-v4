@@ -61,6 +61,8 @@ class SamplerHandle
 
     std::vector<SamplerHandle> Clone(int n, Allocator alloc = {});
 
+    void setSeed(int seed); // P3D updates
+
     std::string ToString() const;
 };
 
