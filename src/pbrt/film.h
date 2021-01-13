@@ -307,9 +307,8 @@ class RGBFilm : public FilmBase {
             mean = (means[firstIndex] + means[secondIndex]) / 2;
         }
         
-        // std::cout << "Pakmon value is " << *Options->pakmon << std::endl;
         // Here use of PAKMON => compromise between Mean and MON
-        //if (*Options->pakmon >= 1) {
+        if (*Options->pakmon >= 1) {
             /* 
             TODO : include here use of PakMON with entropy computation
             => Adapt Python code
@@ -341,7 +340,7 @@ class RGBFilm : public FilmBase {
 
             for (int i = 0; i < vp.size(); i++) {
                 
-                // check if necessary to sort means
+                // use of sorted means in order to compute variance evolution by step 1
                 if (i > 1) {
 
                     // compute variance of each elements
@@ -354,16 +353,81 @@ class RGBFilm : public FilmBase {
                     }
                     var /= (i + 1);
 
+                    // add new 
                     distances.push_back(var);
                 }
                
             }
 
-            // use of distances to compute entropy
+            // use of variance evolution and compute entropy
             Float distancesEntropy = getEntropy(distances);
 
-            std::cout << distancesEntropy << std::endl;
-        //}
+            // Computation of PakMON using \alpha and \kappa value
+            unsigned middleIndex = int(nElements / 2);
+
+            // alpha and kappa automatically set value
+            Float alpha = distancesEntropy;
+            unsigned kappa = (unsigned)(middleIndex * distancesEntropy) - 1;
+
+            // std::cout << "-----------------------------------------" << std::endl;
+            // std::cout << "=> Alpha value is: " << alpha << std::endl;
+            // std::cout << "=> Kappa value is: " << kappa << std::endl;
+
+            // now add of neighborhood information using previous defined params
+            // sum_to_divide = 1
+            // weighted_median = median # default only median
+            
+            // for i in range(1, rho + 1):
+                
+            //     # confidence {alpha} parameter using distance criterion
+            //     mult_factor = math.pow(alpha, i)
+                
+            //     # add left and right neighbor contribution
+            //     weighted_median += sorted_means[lower_index - i] * mult_factor
+            //     weighted_median += sorted_means[higher_index + i] * mult_factor
+                
+            //     # weighting contribution to take in account
+            //     sum_to_divide += 2 * mult_factor
+            
+            // # weighted median with neigborhood information
+            // return weighted_median / sum_to_divide
+
+            unsigned lowerIndex = 0;
+            unsigned higherIndex = 0;
+        
+            // get current lower and higher index 
+            if (nElements % 2 == 0) {
+                
+                lowerIndex = middleIndex - 1;
+                higherIndex = middleIndex;
+                
+            } else {
+                lowerIndex = middleIndex - 1;
+                higherIndex = middleIndex - 1;
+            }
+
+            // std::cout << "MON value is: " << (mean / weight) << std::endl;
+
+            // use of `vp` which stores ordered mean and 
+            for (int i = 1; i < kappa + 1; i++) {
+
+                // current neighbor multiple factor
+                Float multFactor = pow(alpha, i);
+
+                // add left and right neighbor contribution
+                // vp stores in first element the sorted mean
+                mean += vp[lowerIndex - i].first * multFactor;
+                mean += vp[higherIndex + i].first * multFactor;
+                
+                // weighting contribution to take in account
+                // vp stores in second element the previous index of sorted mean
+                // use of this index to retrieve the associated weightsSum
+                weight += weightsSum[vp[lowerIndex].second] * multFactor;
+                weight += weightsSum[vp[higherIndex].second] * multFactor;
+            }
+
+            // std::cout << "PAKMON value is: " << (mean / weight) << std::endl;
+        }
 
         return Point2f(mean, weight);
     }
