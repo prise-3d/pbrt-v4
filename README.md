@@ -1,5 +1,5 @@
-pbrt, Version 4 (Early Release)
-===============================
+[P3D] pbrt, Version 4 (Early Release)
+=====================================
 
 ![Transparent Machines frame, via @beeple](images/teaser-transparent-machines.png)
 
