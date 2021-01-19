@@ -1,9 +1,9 @@
-pbrt, Version 4 (Early Release)
-===============================
+[P3D] pbrt, Version 4 (Early Release)
+=====================================
 
 ![Transparent Machines frame, via @beeple](images/teaser-transparent-machines.png)
 
-This is an early release of pbrt-v4, the rendering system that will be
+This is a **custom version** of the early release of pbrt-v4 for the **PrISE-3D** project, the rendering system that will be
 described in the (eventually) forthcoming fourth edition of *Physically
 Based Rendering: From Theory to Implementation*.  (We hope to have an
 online version of the book posted a few months into 2021 and printed books available
@@ -19,25 +19,25 @@ them before the book is final.
 A number of scenes for pbrt-v4 are [available in a git
 repository](https://github.com/mmp/pbrt-v4-scenes).
 
-Parameters
-----------
+Custom version [Parameters]
+---------------------------
 
-Current version is an extension of Pbrt-v4 with use of some specific needed usages during thesis:
+Current version is an extension of pbrt-v4 with use of some specific needs required during thesis:
 
 Extended command line parameter:
 
-- `folder`: {string} -- output folder of current rendered scene ;
-- `nimages`: {unsigned} -- number of independent images of `spp` samples to generate ;
-- `independent`: {bool} -- save or not in an independant way (default 1, hence true) ;
-- `startindex`: {unsigned} -- start output index of first generated image for new run ;
-- `monk`: {unsigned} -- use of Median of meaNs estimator instead of classical mean ;
-- `pakmon`: {bool} -- specify if PakMoN extension is used or not [0, 1].
+- `--folder`: {string} -- output folder of current rendered scene ;
+- `--nimages`: {unsigned} -- number of independent images of `spp` samples to generate ;
+- `--independent`: {bool} -- save or not in an independant way (default 1, hence true) ;
+- `--startindex`: {unsigned} -- start output index of first generated image for new run ;
+- `--monk`: {unsigned} -- use of Median of meaNs estimator instead of classical mean ;
+- `--pakmon`: {bool} -- specify if PakMoN extension is used or not [0, 1].
 
 
-TODO:
-- `independent`: {bool} -- adapt to GPU ; 
-- `monk`: {unsigned} -- adapt to GPU ; 
-- `pakmon`: {unsigned} -- adapt to GPU.
+__TODO:__
+- `--independent`: {bool} -- adapt to GPU ; 
+- `--monk`: {unsigned} -- adapt to GPU ; 
+- `--pakmon`: {unsigned} -- adapt to GPU.
 
 Features
 --------
