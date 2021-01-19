@@ -291,6 +291,9 @@ CameraHandle CameraHandle::Create(const std::string &name,
     else if (name == "spherical")
         camera = SphericalCamera::Create(parameters, cameraTransform, film, medium, loc,
                                          alloc);
+    else if (name == "stereoscopic") // P3D updates
+        camera = StereoscopicCamera::Create(parameters, cameraTransform, film, medium, loc,
+                                         alloc);
     else
         ErrorExit(loc, "%s: camera type unknown.", name);
 
@@ -1462,5 +1465,315 @@ RealisticCamera *RealisticCamera::Create(const ParameterDictionary &parameters,
                                              focusDistance, apertureDiameter,
                                              std::move(apertureImage), alloc);
 }
+
+// P3D Updates
+StereoscopicCamera *StereoscopicCamera::Create(const ParameterDictionary &parameters,
+                                             const CameraTransform &cameraTransform,
+                                             FilmHandle film, MediumHandle medium,
+                                             const FileLoc *loc, Allocator alloc) {
+    CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters,
+                                              loc);
+
+    Float lensradius = parameters.GetOneFloat("lensradius", 0.f);
+    Float focaldistance = parameters.GetOneFloat("focaldistance", 1e6);
+    Float frame =
+        parameters.GetOneFloat("frameaspectratio", Float(film.FullResolution().x) /
+                                                       Float(film.FullResolution().y));
+    Bounds2f screen;
+    if (frame > 1.f) {
+        screen.pMin.x = -frame;
+        screen.pMax.x = frame;
+        screen.pMin.y = -1.f;
+        screen.pMax.y = 1.f;
+    } else {
+        screen.pMin.x = -1.f;
+        screen.pMax.x = 1.f;
+        screen.pMin.y = -1.f / frame;
+        screen.pMax.y = 1.f / frame;
+    }
+    std::vector<Float> sw = parameters.GetFloatArray("screenwindow");
+    if (!sw.empty()) {
+        if (sw.size() == 4) {
+            screen.pMin.x = sw[0];
+            screen.pMax.x = sw[1];
+            screen.pMin.y = sw[2];
+            screen.pMax.y = sw[3];
+        } else
+            Error(loc, "\"screenwindow\" should have four values");
+    }
+    Float fov = parameters.GetOneFloat("fov", 90.);
+
+    std::string defView = "left";
+    std::string view = parameters.GetOneString("view", defView);
+
+    if (view !="left" && view !="right") {
+        Warning("incorrect stereoscopic view = %s - left view assumed",
+            view.c_str());
+        view = defView;
+    }
+
+    // 2. intra-ocular distance (default 0.065m)
+    Float eyeDistance = parameters.GetOneFloat("eyeDistance", 0.065);
+    
+    // 3. Update output name file with `left` or `right`
+    size_t pos = film.GetFilename().find_last_of('.');// extension position
+    if(pos==std::string::npos){
+        film.GetFilename().append("-");
+        film.GetFilename().append(view);
+    }else{
+        film.GetFilename().insert(pos, "-");
+        film.GetFilename().insert(pos+1, view);
+    }
+    
+    return alloc.new_object<StereoscopicCamera>(cameraBaseParameters, fov, screen,
+                                               lensradius, focaldistance, view, eyeDistance);
+}
+
+pstd::optional<CameraRay> StereoscopicCamera::GenerateRay(CameraSample sample,
+                                        SampledWavelengths &lambda) const {
+
+    // Compute raster and camera sample positions
+    Point3f pFilm = Point3f(sample.pFilm.x, sample.pFilm.y, 0);
+    Point3f pCamera = cameraFromRaster(pFilm);
+
+    //Ray ray(Point3f(0, 0, 0), Normalize(Vector3f(pCamera)), SampleTime(sample.time), medium);
+    Ray ray(eyeLocation, Normalize(Vector3f(pCamera)), SampleTime(sample.time), medium);
+
+    // Modify ray for depth of field
+    if (lensRadius > 0) {
+        // Sample point on lens
+        Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
+
+        // Compute point on plane of focus
+        Float ft = focalDistance / ray.d.z;
+        Point3f pFocus = ray(ft);
+
+        // Update ray for effect of lens
+        ray.o = Point3f(pLens.x, pLens.y, 0);
+        ray.d = Normalize(pFocus - ray.o);
+    }
+
+    return CameraRay{RenderFromCamera(ray)};
+}
+
+PBRT_CPU_GPU
+pstd::optional<CameraRayDifferential> StereoscopicCamera::GenerateRayDifferential(
+    const CameraSample &sample, SampledWavelengths &lambda) const {
+
+    // Compute raster and camera sample positions
+    Point3f pFilm = Point3f(sample.pFilm.x, sample.pFilm.y, 0);
+    Point3f pCamera = cameraFromRaster(pFilm);
+    Vector3f dir = Normalize(Vector3f(pCamera.x, pCamera.y, pCamera.z));
+    //RayDifferential ray(Point3f(0, 0, 0), dir, SampleTime(sample.time), medium);
+    RayDifferential ray(eyeLocation, dir, SampleTime(sample.time), medium);
+    // Modify ray for depth of field
+    if (lensRadius > 0) {
+        // Sample point on lens
+        Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
+
+        // Compute point on plane of focus
+        Float ft = focalDistance / ray.d.z;
+        Point3f pFocus = ray(ft);
+
+        // Update ray for effect of lens
+        ray.o = Point3f(pLens.x, pLens.y, 0);
+        ray.d = Normalize(pFocus - ray.o);
+    }
+
+    // Compute offset rays for _PerspectiveCamera_ ray differentials
+    if (lensRadius > 0) {
+        // Compute _PerspectiveCamera_ ray differentials accounting for lens
+        // Sample point on lens
+        Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
+
+        // Compute $x$ ray differential for _PerspectiveCamera_ with lens
+        Vector3f dx = Normalize(Vector3f(pCamera + dxCamera));
+        Float ft = focalDistance / dx.z;
+        Point3f pFocus = Point3f(0, 0, 0) + (ft * dx);
+        ray.rxOrigin = Point3f(pLens.x, pLens.y, 0);
+        ray.rxDirection = Normalize(pFocus - ray.rxOrigin);
+
+        // Compute $y$ ray differential for _PerspectiveCamera_ with lens
+        Vector3f dy = Normalize(Vector3f(pCamera + dyCamera));
+        ft = focalDistance / dy.z;
+        pFocus = Point3f(0, 0, 0) + (ft * dy);
+        ray.ryOrigin = Point3f(pLens.x, pLens.y, 0);
+        ray.ryDirection = Normalize(pFocus - ray.ryOrigin);
+
+    } else {
+        ray.rxOrigin = ray.ryOrigin = ray.o;
+        ray.rxDirection = Normalize(Vector3f(pCamera) + dxCamera);
+        ray.ryDirection = Normalize(Vector3f(pCamera) + dyCamera);
+    }
+
+    ray.hasDifferentials = true;
+    return CameraRayDifferential{RenderFromCamera(ray)};
+}
+
+std::string StereoscopicCamera::ToString() const {
+    return StringPrintf("[ StereoscopicCamera %s dxCamera: %s dyCamera: %s A: "
+                        "%f cosTotalWidth: %f  eyeLocation %s]",
+                        BaseToString(), dxCamera, dyCamera, A, cosTotalWidth, eyeLocation);
+}
+// P3D Updates
+
+// P3D Updates
+AutoStereoscopicCamera *AutoStereoscopicCamera::Create(const ParameterDictionary &parameters,
+                                             const CameraTransform &cameraTransform,
+                                             FilmHandle film, MediumHandle medium,
+                                             const FileLoc *loc, Allocator alloc) {
+    CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters,
+                                              loc);
+
+    Float lensradius = parameters.GetOneFloat("lensradius", 0.f);
+    Float focaldistance = parameters.GetOneFloat("focaldistance", 1e6);
+    Float frame =
+        parameters.GetOneFloat("frameaspectratio", Float(film.FullResolution().x) /
+                                                       Float(film.FullResolution().y));
+    Bounds2f screen;
+    if (frame > 1.f) {
+        screen.pMin.x = -frame;
+        screen.pMax.x = frame;
+        screen.pMin.y = -1.f;
+        screen.pMax.y = 1.f;
+    } else {
+        screen.pMin.x = -1.f;
+        screen.pMax.x = 1.f;
+        screen.pMin.y = -1.f / frame;
+        screen.pMax.y = 1.f / frame;
+    }
+    std::vector<Float> sw = parameters.GetFloatArray("screenwindow");
+    if (!sw.empty()) {
+        if (sw.size() == 4) {
+            screen.pMin.x = sw[0];
+            screen.pMax.x = sw[1];
+            screen.pMin.y = sw[2];
+            screen.pMax.y = sw[3];
+        } else
+            Error(loc, "\"screenwindow\" should have four values");
+    }
+    Float fov = parameters.GetOneFloat("fov", 90.);
+
+    // get specific attributes to autostereoscopy
+    // 1. the number of views of autostereoscopy
+    int nbView = parameters.GetOneInt("nbView", 8);
+    if(nbView <= 0){
+        Warning("incorrect autostereoscopic number of view (%d) - 8 views assumed", nbView);
+        nbView = 8;
+    }
+
+    // 2. the number of the view to be generated
+    int view = parameters.GetOneInt("view", 1);
+    if(view <= 0 || view > nbView){
+        Warning("incorrect autostereoscopic view number (%d) - view #1 assumed", view);
+        view = 1;
+    }
+
+    // 2. intra-ocular distance (default 0.065m)
+    Float eyeDistance = parameters.GetOneFloat("eyeDistance", 0.065);
+    
+    // 3. Update output name file depending of attributs
+    // format = <name>-<view>.<ext>
+    std::stringstream added;
+    if(view < 10) added << "-0"; else added << "-";// H: max number of views < 100
+    added << view;
+
+    size_t pos = film.GetFilename().find_last_of('.');// extension position
+    if(pos==std::string::npos)
+        film.GetFilename().append(added.str());
+    else
+        film.GetFilename().insert(pos, added.str());
+    
+    return alloc.new_object<AutoStereoscopicCamera>(cameraBaseParameters, fov, screen,
+                                               lensradius, focaldistance, view, nbView, eyeDistance);
+}
+
+pstd::optional<CameraRay> AutoStereoscopicCamera::GenerateRay(CameraSample sample,
+                                        SampledWavelengths &lambda) const {
+
+    // Compute raster and camera sample positions
+    Point3f pFilm = Point3f(sample.pFilm.x, sample.pFilm.y, 0);
+    Point3f pCamera = cameraFromRaster(pFilm);
+
+    //Ray ray(Point3f(0, 0, 0), Normalize(Vector3f(pCamera)), SampleTime(sample.time), medium);
+    Ray ray(eyeLocation, Normalize(Vector3f(pCamera)), SampleTime(sample.time), medium);
+
+    // Modify ray for depth of field
+    if (lensRadius > 0) {
+        // Sample point on lens
+        Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
+
+        // Compute point on plane of focus
+        Float ft = focalDistance / ray.d.z;
+        Point3f pFocus = ray(ft);
+
+        // Update ray for effect of lens
+        ray.o = Point3f(pLens.x, pLens.y, 0);
+        ray.d = Normalize(pFocus - ray.o);
+    }
+
+    return CameraRay{RenderFromCamera(ray)};
+}
+
+PBRT_CPU_GPU
+pstd::optional<CameraRayDifferential> AutoStereoscopicCamera::GenerateRayDifferential(
+    const CameraSample &sample, SampledWavelengths &lambda) const {
+
+    // Compute raster and camera sample positions
+    Point3f pFilm = Point3f(sample.pFilm.x, sample.pFilm.y, 0);
+    Point3f pCamera = cameraFromRaster(pFilm);
+    Vector3f dir = Normalize(Vector3f(pCamera.x, pCamera.y, pCamera.z));
+    //RayDifferential ray(Point3f(0, 0, 0), dir, SampleTime(sample.time), medium);
+    RayDifferential ray(eyeLocation, dir, SampleTime(sample.time), medium);
+    // Modify ray for depth of field
+    if (lensRadius > 0) {
+        // Sample point on lens
+        Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
+
+        // Compute point on plane of focus
+        Float ft = focalDistance / ray.d.z;
+        Point3f pFocus = ray(ft);
+
+        // Update ray for effect of lens
+        ray.o = Point3f(pLens.x, pLens.y, 0);
+        ray.d = Normalize(pFocus - ray.o);
+    }
+
+    // Compute offset rays for _PerspectiveCamera_ ray differentials
+    if (lensRadius > 0) {
+        // Compute _PerspectiveCamera_ ray differentials accounting for lens
+        // Sample point on lens
+        Point2f pLens = lensRadius * SampleUniformDiskConcentric(sample.pLens);
+
+        // Compute $x$ ray differential for _PerspectiveCamera_ with lens
+        Vector3f dx = Normalize(Vector3f(pCamera + dxCamera));
+        Float ft = focalDistance / dx.z;
+        Point3f pFocus = Point3f(0, 0, 0) + (ft * dx);
+        ray.rxOrigin = Point3f(pLens.x, pLens.y, 0);
+        ray.rxDirection = Normalize(pFocus - ray.rxOrigin);
+
+        // Compute $y$ ray differential for _PerspectiveCamera_ with lens
+        Vector3f dy = Normalize(Vector3f(pCamera + dyCamera));
+        ft = focalDistance / dy.z;
+        pFocus = Point3f(0, 0, 0) + (ft * dy);
+        ray.ryOrigin = Point3f(pLens.x, pLens.y, 0);
+        ray.ryDirection = Normalize(pFocus - ray.ryOrigin);
+
+    } else {
+        ray.rxOrigin = ray.ryOrigin = ray.o;
+        ray.rxDirection = Normalize(Vector3f(pCamera) + dxCamera);
+        ray.ryDirection = Normalize(Vector3f(pCamera) + dyCamera);
+    }
+
+    ray.hasDifferentials = true;
+    return CameraRayDifferential{RenderFromCamera(ray)};
+}
+
+std::string AutoStereoscopicCamera::ToString() const {
+    return StringPrintf("[ AutoStereoscopicCamera %s dxCamera: %s dyCamera: %s A: "
+                        "%f cosTotalWidth: %f  eyeLocation %s]",
+                        BaseToString(), dxCamera, dyCamera, A, cosTotalWidth, eyeLocation);
+}
+// P3D Updates
 
 }  // namespace pbrt

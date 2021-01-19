@@ -552,6 +552,136 @@ class RealisticCamera : public CameraBase {
     pstd::vector<Bounds2f> exitPupilBounds;
 };
 
+// P3D updates
+// StereoscopicCamera Declarations
+class StereoscopicCamera : public PerspectiveCamera {
+ public:
+
+    // StereoscopicCamera Public Methods
+        StereoscopicCamera(CameraBaseParameters baseParameters, Float fov,
+                      const Bounds2f &screenWindow, Float lensRadius, Float focalDistance, 
+                      const std::string view, Float eyeDistance)
+        : PerspectiveCamera(baseParameters, fov, screenWindow,
+                           lensRadius, focalDistance) {
+        // Compute differential changes in origin for perspective camera rays
+        dxCamera =
+            cameraFromRaster(Point3f(1, 0, 0)) - cameraFromRaster(Point3f(0, 0, 0));
+        dyCamera =
+            cameraFromRaster(Point3f(0, 1, 0)) - cameraFromRaster(Point3f(0, 0, 0));
+
+        // Compute _cosTotalWidth_ for perspective camera
+        Point2f radius = Point2f(film.GetFilter().Radius());
+        Point3f pCorner(-radius.x, -radius.y, 0.f);
+        Vector3f wCornerCamera = Normalize(Vector3f(cameraFromRaster(pCorner)));
+        cosTotalWidth = wCornerCamera.z;
+        DCHECK_LT(.9999 * cosTotalWidth, std::cos(Radians(fov / 2)));
+
+        // Compute image plane area at $z=1$ for _StereoscopicCamera_
+        Point2i res = film.FullResolution();
+        Point3f pMin = cameraFromRaster(Point3f(0, 0, 0));
+        Point3f pMax = cameraFromRaster(Point3f(res.x, res.y, 0));
+        pMin /= pMin.z;
+        pMax /= pMax.z;
+        A = std::abs((pMax.x - pMin.x) * (pMax.y - pMin.y));
+
+        // add of eyeLocation computation
+        eyeLocation = (view=="left") ? Point3f(-eyeDistance/2.0, 0, 0) :
+        Point3f(eyeDistance/2.0, 0, 0);
+
+        // Compute minimum differentials for _StereoscopicCamera_
+        FindMinimumDifferentials(this);
+    }
+
+    static StereoscopicCamera *Create(const ParameterDictionary &parameters,
+                                     const CameraTransform &cameraTransform,
+                                     FilmHandle film, MediumHandle medium,
+                                     const FileLoc *loc, Allocator alloc = {});
+
+    PBRT_CPU_GPU
+    pstd::optional<CameraRay> GenerateRay(CameraSample sample,
+                                            SampledWavelengths &lambda) const;
+
+    PBRT_CPU_GPU
+    pstd::optional<CameraRayDifferential> GenerateRayDifferential(
+        const CameraSample &sample, SampledWavelengths &lambda) const;
+
+    std::string ToString() const;
+
+  private:
+    // StereoscopicCamera Private Members
+    Vector3f dxCamera, dyCamera;
+    Float cosTotalWidth;
+    Float A;
+    Point3f eyeLocation; // origin in relation to the position of the eye
+};
+// P3D updates
+
+// P3D updates
+// AutoStereoscopicCamera Declarations
+class AutoStereoscopicCamera : public PerspectiveCamera {
+ public:
+
+    // AutoStereoscopicCamera Public Methods
+    AutoStereoscopicCamera(CameraBaseParameters baseParameters, Float fov,
+                      const Bounds2f &screenWindow, Float lensRadius, Float focalDistance, 
+                      int viewId, int nbView, Float eyeDistance)
+        : PerspectiveCamera(baseParameters, fov, screenWindow,
+                           lensRadius, focalDistance) {
+        // Compute differential changes in origin for perspective camera rays
+        dxCamera =
+            cameraFromRaster(Point3f(1, 0, 0)) - cameraFromRaster(Point3f(0, 0, 0));
+        dyCamera =
+            cameraFromRaster(Point3f(0, 1, 0)) - cameraFromRaster(Point3f(0, 0, 0));
+
+        // Compute _cosTotalWidth_ for perspective camera
+        Point2f radius = Point2f(film.GetFilter().Radius());
+        Point3f pCorner(-radius.x, -radius.y, 0.f);
+        Vector3f wCornerCamera = Normalize(Vector3f(cameraFromRaster(pCorner)));
+        cosTotalWidth = wCornerCamera.z;
+        DCHECK_LT(.9999 * cosTotalWidth, std::cos(Radians(fov / 2)));
+
+        // Compute image plane area at $z=1$ for _AutoStereoscopicCamera_
+        Point2i res = film.FullResolution();
+        Point3f pMin = cameraFromRaster(Point3f(0, 0, 0));
+        Point3f pMax = cameraFromRaster(Point3f(res.x, res.y, 0));
+        pMin /= pMin.z;
+        pMax /= pMax.z;
+        A = std::abs((pMax.x - pMin.x) * (pMax.y - pMin.y));
+
+        // add of eyeLocation computation
+        // offset of the origin of the rays according to the position of the eye
+        Float totalGap = (nbView - 1) * eyeDistance; // gap between the two extreme views
+        Float offset = -totalGap * 0.5 + (viewId - 1) * eyeDistance;
+        eyeLocation =  Point3f(offset, 0, 0);
+
+        // Compute minimum differentials for _AutoStereoscopicCamera_
+        FindMinimumDifferentials(this);
+    }
+    
+    static AutoStereoscopicCamera *Create(const ParameterDictionary &parameters,
+                                     const CameraTransform &cameraTransform,
+                                     FilmHandle film, MediumHandle medium,
+                                     const FileLoc *loc, Allocator alloc = {});
+
+    PBRT_CPU_GPU
+    pstd::optional<CameraRay> GenerateRay(CameraSample sample,
+                                            SampledWavelengths &lambda) const;
+
+    PBRT_CPU_GPU
+    pstd::optional<CameraRayDifferential> GenerateRayDifferential(
+        const CameraSample &sample, SampledWavelengths &lambda) const;
+
+    std::string ToString() const;
+
+  private:
+    // AutoStereoscopicCamera Private Members
+    Vector3f dxCamera, dyCamera;
+    Float cosTotalWidth;
+    Float A;
+    Point3f eyeLocation; // origin in relation to the position of the eye
+};
+// P3D updates
+
 inline pstd::optional<CameraRay> CameraHandle::GenerateRay(
     CameraSample sample, SampledWavelengths &lambda) const {
     auto generate = [&](auto ptr) { return ptr->GenerateRay(sample, lambda); };

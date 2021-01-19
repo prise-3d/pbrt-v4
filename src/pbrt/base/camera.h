@@ -26,12 +26,15 @@ struct CameraSample;
 class CameraTransform;
 
 class PerspectiveCamera;
+class StereoscopicCamera; // P3D Updates
+class AutoStereoscopicCamera; // P3D Updates
 class OrthographicCamera;
 class SphericalCamera;
 class RealisticCamera;
 
+// P3D Update
 // CameraHandle Definition
-class CameraHandle : public TaggedPointer<PerspectiveCamera, OrthographicCamera,
+class CameraHandle : public TaggedPointer<PerspectiveCamera, StereoscopicCamera, AutoStereoscopicCamera, OrthographicCamera,
                                           SphericalCamera, RealisticCamera> {
   public:
     // Camera Interface
