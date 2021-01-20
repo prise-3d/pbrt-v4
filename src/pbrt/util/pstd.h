@@ -970,6 +970,46 @@ class vector {
         LOG_FATAL("TODO");
     }
 
+    // sort the vector and returns the sorted indices from previous values of vector
+    pstd::vector<int> sort() {
+   
+        pstd::vector<int> indices;
+
+        // utils variabes
+        int n = size();
+        int i, j, min;
+        T temp;
+
+        // default indices values
+        for (int i = 0; i < n; i++) {
+            indices.push_back(i);
+        }
+
+        // sort values and get sorted indices
+        for (int i = 0; i < n - 1; i++) {
+            min = i;
+            for (j = i + 1; j < n; j++) {
+            
+                if (ptr[j] < ptr[min]) {
+                    min = j;
+                }
+            }
+
+            // swap two values inside vector
+            temp = ptr[i];
+            ptr[i] = ptr[min];
+            ptr[min] = temp;
+
+            // swap two indices inside vector
+            temp = indices[i];
+            indices[i] = indices[min];
+            indices[min] = temp;
+        }
+
+        return indices;
+    }
+
+
   private:
     Allocator alloc;
     T *ptr = nullptr;

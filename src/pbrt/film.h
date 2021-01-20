@@ -334,49 +334,34 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     Point2f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
             
-        // TODO : find associated weightsum index and use it
         unsigned nElements = cvalues.size();
-        pstd::vector<Float> means(nElements);
+        pstd::vector<Float> means(cvalues); // copy of current channel values
 
-        for (unsigned i = 0; i < nElements; i++){
-            // remove dividing by counters as we use filter weightsum later
-            means[i]  = cvalues[i];
-        }
-
-        // Vector to store element 
-        // with respective present index 
-        std::vector<std::pair<Float, unsigned>> vp; 
-    
-        // Inserting element in pair vector 
-        // to keep track of previous indexes 
-        for (unsigned i = 0; i < nElements; i++) { 
-            vp.push_back(std::make_pair(means[i], i)); 
-        }
-
-        // means are here sorted and associated index are stored in `second`
-        std::sort(vp.begin(), vp.end());
+        // sort means vector and get sorted indices as output
+        pstd::vector<int> sortedIndices = means.sort();
 
         Float weight, mean = 0.;
 
         // compute median from means
+        // find associated weightsum index and use it
         // Classical MON
         if (nElements % 2 == 1){
-            unsigned unsortedIndex = vp[int(nElements/2)].second;
+            unsigned unsortedIndex = sortedIndices[int(nElements/2)];
 
             weight = weightsSum[unsortedIndex];
-            mean = means[unsortedIndex];
+            mean = cvalues[unsortedIndex];
         }
         else{
             int k_mean = int(nElements/2);
-            unsigned firstIndex = vp[k_mean - 1].second;
-            unsigned secondIndex = vp[k_mean].second;
+            unsigned firstIndex = sortedIndices[k_mean - 1];
+            unsigned secondIndex = sortedIndices[k_mean];
 
             weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-            mean = (means[firstIndex] + means[secondIndex]) / 2;
+            mean = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
         }
         
         // Here use of PAKMON => compromise between Mean and MON
-        if (*Options->pakmon >= 1) {
+        if (pakmonUsed >= 1) {
             /* 
             TODO : include here use of PakMON with entropy computation
             => Adapt Python code
@@ -397,16 +382,15 @@ class RGBFilm : public FilmBase {
 
             Float meansSum = 0;
 
-            for (int i = 0; i < means.size(); i++)
-                meansSum += means[i];
+            for (int i = 0; i < cvalues.size(); i++)
+                meansSum += cvalues[i];
 
-            Float currentMean = meansSum / means.size();
+            Float currentMean = meansSum / cvalues.size();
                 
-            
             // compute variance distance evolution
             pstd::vector<Float> distances;
 
-            for (int i = 0; i < vp.size(); i++) {
+            for (int i = 0; i < means.size(); i++) {
                 
                 // use of sorted means in order to compute variance evolution by step 1
                 if (i > 1) {
@@ -417,7 +401,7 @@ class RGBFilm : public FilmBase {
                     // use of previously sorted means
                     for(int j = 0; j < i; j++)
                     {
-                        var += (vp[j].first - currentMean) * (vp[j].first - currentMean);
+                        var += (means[j] - currentMean) * (means[j] - currentMean);
                     }
                     var /= (i + 1);
 
@@ -483,14 +467,14 @@ class RGBFilm : public FilmBase {
 
                 // add left and right neighbor contribution
                 // vp stores in first element the sorted mean
-                mean += vp[lowerIndex - i].first * multFactor;
-                mean += vp[higherIndex + i].first * multFactor;
+                mean += means[lowerIndex - i] * multFactor;
+                mean += means[higherIndex + i] * multFactor;
                 
                 // weighting contribution to take in account
                 // vp stores in second element the previous index of sorted mean
                 // use of this index to retrieve the associated weightsSum
-                weight += weightsSum[vp[lowerIndex].second] * multFactor;
-                weight += weightsSum[vp[higherIndex].second] * multFactor;
+                weight += weightsSum[sortedIndices[lowerIndex]] * multFactor;
+                weight += weightsSum[sortedIndices[higherIndex]] * multFactor;
             }
 
             // std::cout << "PAKMON value is: " << (mean / weight) << std::endl;
@@ -634,6 +618,7 @@ class RGBFilm : public FilmBase {
     Float filterIntegral;
     SquareMatrix<3> outputRGBFromSensorRGB;
     Array2D<PixelMON> pixels;
+    unsigned pakmonUsed = *Options->pakmon;
 };
 
 // GBufferFilm Definition
