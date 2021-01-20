@@ -334,21 +334,16 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     Point2f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
             
-        // TODO : find associated weightsum index and use it
         unsigned nElements = cvalues.size();
-        pstd::vector<Float> means(nElements);
+        pstd::vector<Float> means(cvalues); // copy of current channel values
 
-        for (unsigned i = 0; i < nElements; i++){
-            // remove dividing by counters as we use filter weightsum later
-            means[i] = cvalues[i];
-        }
-
-        // sort means and get sorted indices as output
+        // sort means vector and get sorted indices as output
         pstd::vector<int> sortedIndices = means.sort();
 
         Float weight, mean = 0.;
 
         // compute median from means
+        // find associated weightsum index and use it
         // Classical MON
         if (nElements % 2 == 1){
             unsigned unsortedIndex = sortedIndices[int(nElements/2)];

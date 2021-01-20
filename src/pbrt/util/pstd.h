@@ -977,7 +977,8 @@ class vector {
 
         // utils variabes
         int n = size();
-        int i, j, min, temp;
+        int i, j, min;
+        T temp;
 
         // default indices values
         for (int i = 0; i < n; i++) {
