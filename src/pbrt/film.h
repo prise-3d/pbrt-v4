@@ -483,6 +483,7 @@ class RGBFilm : public FilmBase {
         return Point2f(mean, weight);
     }
 
+    PBRT_CPU_GPU
     Float getEntropy(pstd::vector<Float> values) const {
         /*
         arr = np.array(arr)
@@ -525,7 +526,8 @@ class RGBFilm : public FilmBase {
         pstd::vector<Float> v(values.size());
 
         for (int i = 0; i < values.size(); i++) {
-            v[i] = eigenValues[i] / (sumEigenValues + std::numeric_limits<Float>::epsilon());
+            // add of epsilon value
+            v[i] = eigenValues[i] / (sumEigenValues + 0.000000000001);
         }
 
         // computation of entropy
