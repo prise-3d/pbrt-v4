@@ -831,6 +831,12 @@ target_link_libraries (imgtool PRIVATE ${ALL_PBRT_LIBS} pbrt_warnings sky_lib fl
 add_sanitizers (imgtool)
 
 ######################
+# pngcat2
+
+add_executable (pngcat2 src/pbrt/cmd/pngcat2.cpp)
+target_link_libraries (pngcat2 png)
+
+######################
 # pspec
 
 add_executable (pspec src/pbrt/cmd/pspec.cpp)

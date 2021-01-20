@@ -202,6 +202,9 @@ class FilmBase {
     const PixelSensor *GetPixelSensor() const { return sensor; }
     std::string GetFilename() const { return filename; }
 
+    // P3D Updates
+    void SetFilename(std::string filename) { this->filename = filename; }
+
     std::string BaseToString() const;
 
     PBRT_CPU_GPU

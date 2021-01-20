@@ -1518,11 +1518,11 @@ StereoscopicCamera *StereoscopicCamera::Create(const ParameterDictionary &parame
     // 3. Update output name file with `left` or `right`
     size_t pos = film.GetFilename().find_last_of('.');// extension position
     if(pos==std::string::npos){
-        film.GetFilename().append("-");
-        film.GetFilename().append(view);
+        film.SetFilename(film.GetFilename().append("-"));
+        film.SetFilename(film.GetFilename().append(view));
     }else{
-        film.GetFilename().insert(pos, "-");
-        film.GetFilename().insert(pos+1, view);
+        film.SetFilename(film.GetFilename().insert(pos, "-"));
+        film.SetFilename(film.GetFilename().insert(pos+1, view));
     }
     
     return alloc.new_object<StereoscopicCamera>(cameraBaseParameters, fov, screen,
@@ -1680,9 +1680,9 @@ AutoStereoscopicCamera *AutoStereoscopicCamera::Create(const ParameterDictionary
 
     size_t pos = film.GetFilename().find_last_of('.');// extension position
     if(pos==std::string::npos)
-        film.GetFilename().append(added.str());
+        film.SetFilename(film.GetFilename().append(added.str()));
     else
-        film.GetFilename().insert(pos, added.str());
+        film.SetFilename(film.GetFilename().insert(pos, added.str()));
     
     return alloc.new_object<AutoStereoscopicCamera>(cameraBaseParameters, fov, screen,
                                                lensradius, focaldistance, view, nbView, eyeDistance);
