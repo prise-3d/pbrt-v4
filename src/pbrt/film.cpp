@@ -509,7 +509,7 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
     CHECK(!pixelBounds.IsEmpty());
     CHECK(colorSpace != nullptr);
 
-    filmPixelMemory += pixelBounds.Area() * sizeof(Pixel);
+    filmPixelMemory += pixelBounds.Area() * sizeof(PixelMON);
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
 }
 
