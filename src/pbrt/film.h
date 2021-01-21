@@ -624,13 +624,6 @@ class RGBFilm : public FilmBase {
         unsigned k = *Options->kmon; // number of means clusters
         unsigned index = 0; // keep track of index used
         bool filled = false;
-
-        ~PixelMON() {
-            for (int i = 0; i < k; i++)
-                delete means[i];
-
-            delete[] means;
-        }
     };
 
     // RGBFilm Private Members
