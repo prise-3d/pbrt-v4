@@ -501,7 +501,7 @@ STAT_MEMORY_COUNTER("Memory/Film pixels", filmPixelMemory);
 RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
                  Float maxComponentValue, bool writeFP16, Allocator alloc)
     : FilmBase(p),
-      pixels(p.pixelBounds, alloc),
+      pixels(pixelBounds, alloc),
       colorSpace(colorSpace),
       maxComponentValue(maxComponentValue),
       writeFP16(writeFP16) {
