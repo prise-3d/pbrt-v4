@@ -542,7 +542,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
         // Evaluate filter at _pi_ and add splat contribution
         Float wt = filter.Evaluate(Point2f(p - pi - Vector2f(0.5, 0.5)));
         if (wt != 0) {
-            Pixel &pixel = pixels[pi];
+            PixelMON &pixel = pixels[pi];
             for (int i = 0; i < 3; ++i)
                 pixel.splatRGB[i].Add(wt * rgb[i]);
         }

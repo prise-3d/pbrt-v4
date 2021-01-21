@@ -228,23 +228,41 @@ class RGBFilm : public FilmBase {
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const {
 
         // P3D Updates
-        const Pixel &pixel = pixels[p];
+        const PixelMON &pixelMON = pixels[p];
         // update estimated value for rgbSum and weightSum
 
         //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
-        //Float weightSum = pixel.weightSum;
-        auto restimation = Estimate(pixel.rvalues, pixel.weightsSum);
-        auto gestimation = Estimate(pixel.gvalues, pixel.weightsSum);
-        auto bestimation = Estimate(pixel.bvalues, pixel.weightsSum);
 
+        pstd::vector<Float> estimations;
+        pstd::vector<Float> weights;
+
+        // based on channel numbers
+        for (int i = 0; i < 3; i++) {
+
+            // loop over pixels (used as means storage) for computing real channel value
+            pstd::vector<Float> cvalues;
+            pstd::vector<Float> weightsSum;
+
+            for (int j = 0; j < pixelMON.means.size(); j++) {
+                cvalues.push_back(pixelMON.means[j].rgbSum[i]);
+                weightsSum.push_back(pixelMON.means[j].weightSum);
+            }
+
+            auto cestimation = Estimate(cvalues, weightsSum);
+
+            // add associated estimations and weights for the current channel obtained
+            // weight depend of the pixels used for computing MON or PakMON
+            estimations.push_back(cestimation.x);
+            weights.push_back(cestimation.y);
+        }
+
+        
         // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
         // computed filter weight sum based on each channel
-        Float weightSum = (restimation.y + gestimation.y + bestimation.y) / 3.;
-
-        // std::cout << xyz[0] << " " << xyz[1] << " " << xyz[2] << std::endl;
+        Float weightSum = (weights[0] + weights[1] + weights[2]) / 3.;
         
-        RGB rgb(restimation.x, gestimation.x, bestimation.x);
+        RGB rgb(estimations[0], estimations[1], estimations[2]);
         // RGB rgb(0., 0., 0.);
         // Float weightSum = estimated.second;
         // P3D Updates
@@ -271,7 +289,7 @@ class RGBFilm : public FilmBase {
 
         // Add splat value at pixel
         for (int c = 0; c < 3; ++c)
-            rgb[c] += splatScale * pixel.splatRGB[c] / filterIntegral;
+            rgb[c] += splatScale * pixelMON.splatRGB[c] / filterIntegral;
 
         // Convert _rgb_ to output RGB color space
         rgb = outputRGBFromSensorRGB * rgb;
@@ -296,36 +314,31 @@ class RGBFilm : public FilmBase {
 
         DCHECK(InsideExclusive(pFilm, pixelBounds));
         // Update pixel values with filtered sample contribution
-        Pixel &pixel = pixels[pFilm];
+        PixelMON &pixelMON = pixels[pFilm];
         // for (int c = 0; c < 3; ++c) {
             // pixel.rgbSum[c] += weight * rgb[c];
 
         // }
 
         // P3D Updates MON pixel
-        /*if (pixel.rvalues.size() < pixel.k){
-
-            pixel.rvalues.push_back(rgb[0]);
-            pixel.gvalues.push_back(rgb[1]);
-            pixel.bvalues.push_back(rgb[2]);
-
-            pixel.weightsSum.push_back(weight);
+        if (pixelMON.means.size() < pixelMON.k){
             
-            // counters.push_back(1);
-        }*/
+            // Add new pixel (as mean) if necessary
+            Pixel pixel;
+            pixelMON.means.push_back(pixel);
+        }
         
-        pixel.rvalues[pixel.index] += rgb[0];
-        pixel.gvalues[pixel.index] += rgb[1];
-        pixel.bvalues[pixel.index] += rgb[2];
+        pixelMON.means[pixelMON.index].rgbSum[0] += rgb[0];
+        pixelMON.means[pixelMON.index].rgbSum[1] += rgb[1];
+        pixelMON.means[pixelMON.index].rgbSum[2] += rgb[2];
 
-        pixel.weightsSum[pixel.index] += weight;
+        pixelMON.means[pixelMON.index].weightSum += weight;
 
-        pixel.index += 1;
+        pixelMON.index += 1;
 
-        if (pixel.index >= pixel.k)
-            pixel.index = 0;
+        if (pixelMON.index >= pixelMON.k)
+            pixelMON.index = 0;
         // P3D Updates
-        // pixel.weightSum += weight;
     }
 
     PBRT_CPU_GPU
@@ -587,19 +600,30 @@ class RGBFilm : public FilmBase {
 
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
-        AtomicDouble splatRGB[3];
-        VarianceEstimator<Float> varianceEstimator;
+        // AtomicDouble splatRGB[3];
+        // VarianceEstimator<Float> varianceEstimator;
 
-        unsigned k = *Options->monk; // number of means clusters
+        // unsigned k = *Options->kmon; // number of means clusters
+        // unsigned index = 0; // keep track of index used
+        // bool filled = false;
+        
+        // pstd::vector<Float> rvalues = pstd::vector<Float>(*Options->kmon);; // store sum of r lightness
+        // pstd::vector<Float> gvalues = pstd::vector<Float>(*Options->kmon);; // store sum of g lightness
+        // pstd::vector<Float> bvalues = pstd::vector<Float>(*Options->kmon);; // store sum of b lightness
+
+        // // pstd::vector<unsigned> counters; // number of elements
+        // pstd::vector<Float> weightsSum = pstd::vector<Float>(*Options->kmon);; // number of elements
+    };
+
+    struct PixelMON {
+        PixelMON() = default;
+
+        pstd::vector<Pixel> means;
+        AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
+
+        unsigned k = *Options->kmon; // number of means clusters
         unsigned index = 0; // keep track of index used
         bool filled = false;
-        
-        pstd::vector<Float> rvalues = pstd::vector<Float>(*Options->monk);; // store sum of r lightness
-        pstd::vector<Float> gvalues = pstd::vector<Float>(*Options->monk);; // store sum of g lightness
-        pstd::vector<Float> bvalues = pstd::vector<Float>(*Options->monk);; // store sum of b lightness
-
-        // pstd::vector<unsigned> counters; // number of elements
-        pstd::vector<Float> weightsSum = pstd::vector<Float>(*Options->monk);; // number of elements
     };
 
     // RGBFilm Private Members
@@ -608,7 +632,7 @@ class RGBFilm : public FilmBase {
     bool writeFP16;
     Float filterIntegral;
     SquareMatrix<3> outputRGBFromSensorRGB;
-    Array2D<Pixel> pixels;
+    Array2D<PixelMON> pixels;
     unsigned pakmonUsed = *Options->pakmon;
 };
 
@@ -680,18 +704,6 @@ class GBufferFilm : public FilmBase {
         Normal3f nSum, nsSum;
         double albedoSum[3] = {0., 0., 0.};
         VarianceEstimator<Float> varianceEstimator[3];
-
-        // custom elements also for gbuffer
-        unsigned k = *Options->monk; // number of means clusters
-        unsigned index = 0; // keep track of index used
-        bool filled = false;
-        
-        pstd::vector<Float> rvalues = pstd::vector<Float>(*Options->monk);; // store sum of r lightness
-        pstd::vector<Float> gvalues = pstd::vector<Float>(*Options->monk);; // store sum of g lightness
-        pstd::vector<Float> bvalues = pstd::vector<Float>(*Options->monk);; // store sum of b lightness
-
-        // pstd::vector<unsigned> counters; // number of elements
-        pstd::vector<Float> weightsSum = pstd::vector<Float>(*Options->monk);; // number of elements
     };
 
     // GBufferFilm Private Members

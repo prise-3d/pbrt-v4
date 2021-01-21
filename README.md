@@ -30,13 +30,13 @@ Extended command line parameter:
 - `--nimages`: {unsigned} -- number of independent images of `spp` samples to generate ;
 - `--independent`: {bool} -- save or not in an independant way (default 1, hence true) ;
 - `--startindex`: {unsigned} -- start output index of first generated image for new run ;
-- `--monk`: {unsigned} -- use of Median of meaNs estimator instead of classical mean ;
+- `--kmon`: {unsigned} -- use of Median of meaNs estimator instead of classical mean ;
 - `--pakmon`: {bool} -- specify if PakMoN extension is used or not [0, 1].
 
 
 __TODO:__
 - `--independent`: {bool} -- adapt to GPU ; 
-- `--monk`: {unsigned} -- adapt to GPU ; 
+- `--kmon`: {unsigned} -- adapt to GPU ; 
 - `--pakmon`: {unsigned} -- adapt to GPU.
 
 Custom version [Features]
