@@ -245,8 +245,8 @@ class RGBFilm : public FilmBase {
             pstd::vector<Float> weightsSum;
 
             for (int j = 0; j < pixelMON.k; j++) {
-                cvalues.push_back(pixelMON.means[j].rgbSum[i]);
-                weightsSum.push_back(pixelMON.means[j].weightSum);
+                cvalues.push_back(pixelMON.means[j]->rgbSum[i]);
+                weightsSum.push_back(pixelMON.means[j]->weightSum);
             }
 
             auto cestimation = Estimate(cvalues, weightsSum);
@@ -328,11 +328,11 @@ class RGBFilm : public FilmBase {
         //     pixelMON.means.push_back(pixel);
         // }
         
-        pixelMON.means[pixelMON.index].rgbSum[0] += rgb[0];
-        pixelMON.means[pixelMON.index].rgbSum[1] += rgb[1];
-        pixelMON.means[pixelMON.index].rgbSum[2] += rgb[2];
+        pixelMON.means[pixelMON.index]->rgbSum[0] += rgb[0];
+        pixelMON.means[pixelMON.index]->rgbSum[1] += rgb[1];
+        pixelMON.means[pixelMON.index]->rgbSum[2] += rgb[2];
 
-        pixelMON.means[pixelMON.index].weightSum += weight;
+        pixelMON.means[pixelMON.index]->weightSum += weight;
 
         pixelMON.index += 1;
 
@@ -618,8 +618,9 @@ class RGBFilm : public FilmBase {
     struct PixelMON {
         PixelMON() = default;
 
-        Pixel *means = new Pixel[*Options->kmon];
+        pstd::vector<Pixel*> means = pstd::vector<Pixel*>(*Options->kmon);
         AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
+        VarianceEstimator<Float> varianceEstimator;
 
         unsigned k = *Options->kmon; // number of means clusters
         unsigned index = 0; // keep track of index used
