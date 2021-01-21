@@ -320,13 +320,13 @@ class RGBFilm : public FilmBase {
 
         // }
 
-        // P3D Updates MON pixel
-        if (pixelMON.means.size() < pixelMON.k){
+        // // P3D Updates MON pixel
+        // if (pixelMON.means.size() < pixelMON.k){
             
-            // Add new pixel (as mean) if necessary
-            Pixel pixel;
-            pixelMON.means.push_back(pixel);
-        }
+        //     // Add new pixel (as mean) if necessary
+        //     Pixel pixel;
+        //     pixelMON.means.push_back(pixel);
+        // }
         
         pixelMON.means[pixelMON.index].rgbSum[0] += rgb[0];
         pixelMON.means[pixelMON.index].rgbSum[1] += rgb[1];
@@ -618,7 +618,7 @@ class RGBFilm : public FilmBase {
     struct PixelMON {
         PixelMON() = default;
 
-        pstd::vector<Pixel> means;
+        pstd::vector<Pixel> means = pstd::vector<Pixel>(*Options->kmon);
         AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
 
         unsigned k = *Options->kmon; // number of means clusters
