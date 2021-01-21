@@ -244,7 +244,7 @@ class RGBFilm : public FilmBase {
             pstd::vector<Float> cvalues;
             pstd::vector<Float> weightsSum;
 
-            for (int j = 0; j < pixelMON.means.size(); j++) {
+            for (int j = 0; j < pixelMON.k; j++) {
                 cvalues.push_back(pixelMON.means[j].rgbSum[i]);
                 weightsSum.push_back(pixelMON.means[j].weightSum);
             }
@@ -618,12 +618,19 @@ class RGBFilm : public FilmBase {
     struct PixelMON {
         PixelMON() = default;
 
-        pstd::vector<Pixel> means = pstd::vector<Pixel>(*Options->kmon);
+        Pixel *means = new Pixel[*Options->kmon];
         AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
 
         unsigned k = *Options->kmon; // number of means clusters
         unsigned index = 0; // keep track of index used
         bool filled = false;
+
+        ~PixelMON() {
+            for (int i = 0; i < k; i++)
+                delete means[i];
+
+            delete[] means;
+        }
     };
 
     // RGBFilm Private Members
