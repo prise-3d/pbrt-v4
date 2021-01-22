@@ -12,6 +12,8 @@ namespace pbrt {
 
 // GPUPathIntegrator Film Methods
 void GPUPathIntegrator::UpdateFilm() {
+
+    // TODO: check parallel for params
     GPUParallelFor(
         "Update Film", maxQueueSize, PBRT_GPU_LAMBDA(int pixelIndex) {
             // Check pixel against film bounds

@@ -309,6 +309,141 @@ class Array2D {
     T *values;
 };
 
+template <typename T>
+class Array1D {
+  public:
+    // Array1D Type Definitions
+    using value_type = T;
+    using iterator = value_type *;
+    using const_iterator = const value_type *;
+    using allocator_type = pstd::pmr::polymorphic_allocator<std::byte>;
+
+    // Array1D Public Methods
+    Array1D(allocator_type allocator = {}) : Array1D(0, allocator) {}
+
+    Array1D(const int &nelements, Allocator allocator = {})
+        : nelements(nelements), allocator(allocator) {
+        
+        values = allocator.allocate_object<T>(nelements);
+        for (int i = 0; i < nelements; ++i)
+            allocator.construct(values + i);
+    }
+
+    Array1D(const int &nelements, T def, allocator_type allocator = {})
+        : Array1D(nelements, allocator) {
+        std::fill(begin(), end(), def);
+    }
+    template <typename InputIt,
+              typename = typename std::enable_if_t<
+                  !std::is_integral<InputIt>::value &&
+                  std::is_base_of<
+                      std::input_iterator_tag,
+                      typename std::iterator_traits<InputIt>::iterator_category>::value>>
+    Array1D(InputIt first, InputIt last, int n, allocator_type allocator = {})
+        : Array1D(n, allocator) {
+        std::copy(first, last, begin());
+    }
+    // Array1D(int n, allocator_type allocator = {})
+    //     : Array1D(n, allocator) {}
+    Array1D(int n, T def, allocator_type allocator = {})
+        : Array1D(n, def, allocator) {}
+    Array1D(const Array1D &a, allocator_type allocator = {})
+        : Array1D(a.begin(), a.end(), a.size(), allocator) {}
+
+    ~Array1D() {
+        for (int i = 0; i < nelements; ++i)
+            allocator.destroy(values + i);
+        allocator.deallocate_object(values, nelements);
+    }
+
+    Array1D(Array1D &&a, allocator_type allocator = {})
+        : nelements(a.nelements), allocator(allocator) {
+        if (allocator == a.allocator) {
+            values = a.values;
+            a.nelements = nelements;
+            a.values = nullptr;
+        } else {
+            values = allocator.allocate_object<T>(nelements);
+            std::copy(a.begin(), a.end(), begin());
+        }
+    }
+    Array1D &operator=(const Array1D &a) = delete;
+
+    Array1D &operator=(Array1D &&other) {
+        if (allocator == other.allocator) {
+            pstd::swap(nelements, other.nelements);
+            pstd::swap(values, other.values);
+        } else if (nelements == other.nelements) {
+
+            for (int i = 0; i < nelements; ++i) {
+                allocator.destroy(values + i);
+                allocator.construct(values + i, other.values[i]);
+            }
+            nelements = other.nelements;
+        } else {
+
+            for (int i = 0; i < nelements; ++i)
+                allocator.destroy(values + i);
+            allocator.deallocate_object(values, nelements);
+
+            int no = other.nelements;
+            values = allocator.allocate_object<T>(no);
+            for (int i = 0; i < no; ++i)
+                allocator.construct(values + i, other.values[i]);
+        }
+        return *this;
+    }
+
+    PBRT_CPU_GPU
+    T &operator[](int i) {
+        return values[i];
+    }
+
+    PBRT_CPU_GPU
+    const T &operator[](int i) const {
+        return values[i];
+    }
+
+    PBRT_CPU_GPU
+    int size() const { return nelements; }
+
+    PBRT_CPU_GPU
+    iterator begin() { return values; }
+    PBRT_CPU_GPU
+    iterator end() { return begin() + size(); }
+
+    PBRT_CPU_GPU
+    const_iterator begin() const { return values; }
+    PBRT_CPU_GPU
+    const_iterator end() const { return begin() + size(); }
+
+    PBRT_CPU_GPU
+    operator pstd::span<T>() { return pstd::span<T>(values, size()); }
+    PBRT_CPU_GPU
+    operator pstd::span<const T>() const { return pstd::span<const T>(values, size()); }
+
+    std::string ToString() const {
+        std::string s = StringPrintf("[ Array1D nelements: %s values: [", nelements);
+        // for (int y = extent.pMin.y; y < extent.pMax.y; ++y) {
+        //     s += " [ ";
+        //     for (int x = extent.pMin.x; x < extent.pMax.x; ++x) {
+        //         T value = (*this)(x, y);
+        //         s += StringPrintf("%s, ", value);
+        //     }
+        //     s += "], ";
+        // }
+        // s += " ] ]";
+        return s;
+    }
+
+  private:
+    // Array2D Private Members
+    int nelements;
+    Allocator allocator;
+    T *values;
+};
+
+
 template <typename T, int N, class Allocator = pstd::pmr::polymorphic_allocator<T>>
 class InlinedVector {
   public:
