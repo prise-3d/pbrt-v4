@@ -69,6 +69,7 @@ Camera "autostereoscopic" "float fov" 50
 `rgbcat2` in an executable (available in build folder) in order to merge `left` and `right` images obtained from Stereoscopic camera.
 
 Usage:
+
 ```bash
 ./rgbcat2 <image-left.png> <image-right.png> <output-image.png>
 ```
