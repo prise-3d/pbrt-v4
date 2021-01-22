@@ -160,6 +160,8 @@ struct FileLoc;
 class Interval;
 template <typename T>
 class Array2D;
+template <typename T>
+class Array1D;
 
 template <typename T>
 class SOA;
