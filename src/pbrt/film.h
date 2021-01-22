@@ -33,6 +33,9 @@
 
 namespace pbrt {
 
+// P3D update k mon parameter (default 1, no kmon use, hence classical mean)
+const int kmon = 21;
+
 // PixelSensor Definition
 class PixelSensor {
   public:
@@ -245,8 +248,8 @@ class RGBFilm : public FilmBase {
             pstd::vector<Float> weightsSum;
 
             for (int j = 0; j < pixelMON.k; j++) {
-                cvalues.push_back(pixelMON.means[j]->rgbSum[i]);
-                weightsSum.push_back(pixelMON.means[j]->weightSum);
+                cvalues.push_back(pixelMON.means[j].rgbSum[i]);
+                weightsSum.push_back(pixelMON.means[j].weightSum);
             }
 
             auto cestimation = Estimate(cvalues, weightsSum);
@@ -257,8 +260,6 @@ class RGBFilm : public FilmBase {
             weights.push_back(cestimation.y);
         }
 
-        
-        // std::cout << xestimation.second << " " << yestimation.second << " " << zestimation.second << std::endl;
         // computed filter weight sum based on each channel
         Float weightSum = (weights[0] + weights[1] + weights[2]) / 3.;
         
@@ -319,20 +320,11 @@ class RGBFilm : public FilmBase {
             // pixel.rgbSum[c] += weight * rgb[c];
 
         // }
+        pixelMON.means[pixelMON.index].rgbSum[0] += rgb[0];
+        pixelMON.means[pixelMON.index].rgbSum[1] += rgb[1];
+        pixelMON.means[pixelMON.index].rgbSum[2] += rgb[2];
 
-        // // P3D Updates MON pixel
-        // if (pixelMON.means.size() < pixelMON.k){
-            
-        //     // Add new pixel (as mean) if necessary
-        //     Pixel pixel;
-        //     pixelMON.means.push_back(pixel);
-        // }
-        
-        pixelMON.means[pixelMON.index]->rgbSum[0] += rgb[0];
-        pixelMON.means[pixelMON.index]->rgbSum[1] += rgb[1];
-        pixelMON.means[pixelMON.index]->rgbSum[2] += rgb[2];
-
-        pixelMON.means[pixelMON.index]->weightSum += weight;
+        pixelMON.means[pixelMON.index].weightSum += weight;
 
         pixelMON.index += 1;
 
@@ -595,35 +587,24 @@ class RGBFilm : public FilmBase {
     //     VarianceEstimator<Float> varianceEstimator;
     // };
 
+    // P3D Updates
     struct Pixel {
         Pixel() = default;
 
         double rgbSum[3] = {0., 0., 0.};
         double weightSum = 0.;
-        // AtomicDouble splatRGB[3];
-        // VarianceEstimator<Float> varianceEstimator;
-
-        // unsigned k = *Options->kmon; // number of means clusters
-        // unsigned index = 0; // keep track of index used
-        // bool filled = false;
-        
-        // pstd::vector<Float> rvalues = pstd::vector<Float>(*Options->kmon);; // store sum of r lightness
-        // pstd::vector<Float> gvalues = pstd::vector<Float>(*Options->kmon);; // store sum of g lightness
-        // pstd::vector<Float> bvalues = pstd::vector<Float>(*Options->kmon);; // store sum of b lightness
-
-        // // pstd::vector<unsigned> counters; // number of elements
-        // pstd::vector<Float> weightsSum = pstd::vector<Float>(*Options->kmon);; // number of elements
     };
 
+    // P3D Updates
     struct PixelMON {
         PixelMON() = default;
 
-        pstd::vector<Pixel*> means = pstd::vector<Pixel*>(*Options->kmon);
+        Pixel means[kmon];
         AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
         VarianceEstimator<Float> varianceEstimator;
 
-        unsigned k = *Options->kmon; // number of means clusters
-        unsigned index = 0; // keep track of index used
+        int k = kmon; // number of means clusters
+        int index = 0; // keep track of index used
         bool filled = false;
     };
 

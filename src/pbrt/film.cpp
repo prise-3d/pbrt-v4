@@ -510,11 +510,11 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
     CHECK(colorSpace != nullptr);
 
     // Allocate Pixel for each vector
-    ParallelFor2D(p.pixelBounds, [&](Point2i p) {
-        for (int i = 0; i < pixels[p].k; i++) {
-            pixels[p].means[i] = new Pixel();
-        }   
-    }); 
+    // ParallelFor2D(p.pixelBounds, [&](Point2i p) {
+    //     for (int i = 0; i < pixels[p].k; i++) {
+    //         pixels[p].means[i] = alloc.new_object<Pixel>();
+    //     }
+    // }); 
 
     filmPixelMemory += pixelBounds.Area() * sizeof(PixelMON);
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
