@@ -34,6 +34,7 @@
 namespace pbrt {
 
 // P3D update k mon parameter (default 1, no kmon use, hence classical mean)
+const int kmon = 11;
 
 // PixelSensor Definition
 class PixelSensor {
@@ -598,11 +599,11 @@ class RGBFilm : public FilmBase {
     struct PixelMON {
         PixelMON() = default;
 
-        Array1D<Pixel> means;
+        Pixel means[kmon];
         AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
         VarianceEstimator<Float> varianceEstimator;
 
-        int k = *Options->kmon; // number of means clusters
+        int k = kmon; // number of means clusters
         int index = 0; // keep track of index used
         bool filled = false;
     };
