@@ -55,6 +55,9 @@ class FilmHandle : public TaggedPointer<RGBFilm, GBufferFilm> {
     PBRT_CPU_GPU inline const PixelSensor *GetPixelSensor() const;
     std::string GetFilename() const;
 
+    // P3D Updates
+    void SetFilename(std::string filename);
+
     using TaggedPointer::TaggedPointer;
 
     static FilmHandle Create(const std::string &name,

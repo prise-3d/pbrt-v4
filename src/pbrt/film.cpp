@@ -63,6 +63,11 @@ std::string FilmHandle::GetFilename() const {
     return DispatchCPU(get);
 }
 
+void FilmHandle::SetFilename(std::string filename) {
+    auto get = [&](auto ptr) { return ptr->SetFilename(filename); };
+    return DispatchCPU(get);
+}
+
 // FilmBaseParameters Method Definitions
 FilmBaseParameters::FilmBaseParameters(const ParameterDictionary &parameters,
                                        FilterHandle filter, const PixelSensor *sensor,
@@ -504,6 +509,13 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
     CHECK(!pixelBounds.IsEmpty());
     CHECK(colorSpace != nullptr);
 
+    // // Allocate Pixel for Array1D
+    // ParallelFor2D(p.pixelBounds, [&](Point2i p) {
+    //     for (int i = 0; i < *Options->kmon; i++) {
+    //         pixels[p].means = Array1D<Pixel>(*Options->kmon, alloc);
+    //     }
+    // }); 
+
     filmPixelMemory += pixelBounds.Area() * sizeof(PixelMON);
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
 }
@@ -609,7 +621,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
     // Float varianceSum = 0;
     // for (Point2i p : pixelBounds) {
-    //     const PixelMON &pixel = pixels[p];
+    //     const Pixel &pixel = pixels[p];
     //     varianceSum += Float(pixel.varianceEstimator.Variance());
     // }
     // metadata->estimatedVariance = varianceSum / pixelBounds.Area();

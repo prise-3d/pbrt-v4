@@ -38,7 +38,7 @@ struct PBRTOptions : BasicPBRTOptions {
     pstd::optional<int> startIndex = 0; // P3D updates: index of image to start with
     pstd::optional<int> ndigits = 6; // P3D updates: number of digits for file format
     pstd::optional<int> gpuDevice;
-    pstd::optional<int> monk = 1; // P3D update k mon parameter (default no monk use)
+    // pstd::optional<int> kmon = 1; // P3D Update: k mon parameter (default 1, no kmon use, hence classical mean)
     pstd::optional<int> pakmon = 0; // P3D update pakmon parameter
     pstd::optional<int> independent = 1; // P3D use of dependant or independant image saving
     bool quickRender = false;

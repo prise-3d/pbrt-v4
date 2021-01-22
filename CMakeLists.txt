@@ -152,6 +152,8 @@ if (CMAKE_CUDA_COMPILER)
 
     if ("${PBRT_OPTIX7_PATH}" STREQUAL "")
         message (WARNING "Found CUDA but PBRT_OPTIX7_PATH is not set. Disabling GPU compilation.")
+    elseif (CMAKE_SYSTEM_NAME STREQUAL Windows)
+        message (FATAL_ERROR "pbrt on the GPU is not currently supported on Windows--sorry! It has worked in the past, but is now buggy. It will be necessary for someone to debug the current issues and send a PR for it to be re-enabled (we don't currently have the bandwidth to do so).")
     else ()
         enable_language (CUDA)
         list (APPEND PBRT_DEFINITIONS "PBRT_BUILD_GPU_RENDERER")
@@ -831,6 +833,12 @@ target_link_libraries (imgtool PRIVATE ${ALL_PBRT_LIBS} pbrt_warnings sky_lib fl
 add_sanitizers (imgtool)
 
 ######################
+# pngcat2
+
+add_executable (pngcat2 src/pbrt/cmd/pngcat2.cpp)
+target_link_libraries (pngcat2 png)
+
+######################
 # pspec
 
 add_executable (pspec src/pbrt/cmd/pspec.cpp)
@@ -842,17 +850,6 @@ target_include_directories (pspec PRIVATE src src/ext)
 target_link_libraries (pspec PRIVATE ${ALL_PBRT_LIBS})
 
 add_sanitizers (pspec)
-
-######################
-# obj2pbrt
-
-add_executable (obj2pbrt src/pbrt/cmd/obj2pbrt.cpp)
-
-target_compile_definitions (obj2pbrt PRIVATE ${PBRT_DEFINITIONS})
-target_compile_options (obj2pbrt PRIVATE ${PBRT_CXX_FLAGS})
-target_link_libraries (obj2pbrt PRIVATE pbrt_warnings)
-
-add_sanitizers (obj2pbrt)
 
 ######################
 # cyhair2pbrt
@@ -920,7 +917,6 @@ install (TARGETS
   pbrt_exe
   imgtool
   pspec
-  obj2pbrt
   cyhair2pbrt
   DESTINATION
   bin
