@@ -52,7 +52,7 @@ class CameraHandle : public TaggedPointer<PerspectiveCamera, StereoscopicCamera,
 
     PBRT_CPU_GPU
     pstd::optional<CameraRayDifferential> GenerateRayDifferential(
-        const CameraSample &sample, SampledWavelengths &lambda) const;
+        CameraSample sample, SampledWavelengths &lambda) const;
 
     PBRT_CPU_GPU inline FilmHandle GetFilm() const;
 

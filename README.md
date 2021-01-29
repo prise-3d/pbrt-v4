@@ -1,6 +1,9 @@
 [P3D] pbrt, Version 4 (Early Release)
 =====================================
 
+[<img src="https://github.com/mmp/pbrt-v4/workflows/cpu-build-and-test/badge.svg">](https://github.com/mmp/pbrt-v4/actions?query=workflow%3Acpu-build-and-test)
+[<img src="https://github.com/mmp/pbrt-v4/workflows/gpu-build-only/badge.svg">](https://github.com/mmp/pbrt-v4/actions?query=workflow%3Agpu-build-only)
+
 ![Transparent Machines frame, via @beeple](images/teaser-transparent-machines.png)
 
 This is a **custom version** of the early release of [pbrt-v4](https://github.com/mmp/pbrt-v4) for the **PrISE-3D** project, the rendering system that will be
@@ -50,7 +53,7 @@ Camera "stereoscopic" "float fov" 50
         "string view" "right" 
 #        "string view" "left" 
        "float eyeDistance" [0.065]  
-```
+
 
 **Note:** it is necessary to generate the right and left images separately.
 

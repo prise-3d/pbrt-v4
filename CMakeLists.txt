@@ -15,7 +15,9 @@ list (INSERT CMAKE_MODULE_PATH 0 "${CMAKE_SOURCE_DIR}/cmake")
 option (PBRT_FLOAT_AS_DOUBLE "Use 64-bit floats" OFF)
 option (PBRT_BUILD_NATIVE_EXECUTABLE "Build executable optimized for CPU architecture of system pbrt was built on" ON)
 option (PBRT_NVTX "Insert NVTX annotations for NVIDIA Profiling and Debugging Tools" OFF)
+option (PBRT_USE_PREGENERATED_RGB_TO_SPECTRUM_TABLES "Use pregenerated rgbspectrum_*.cpp files rather than running rgb2spec_opt to generate them at build time" OFF)
 set (PBRT_OPTIX7_PATH "" CACHE PATH "Path to OptiX 7 SDK")
+set (PBRT_GPU_SHADER_MODEL "" CACHE STRING "")
 
 if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message (STATUS "Setting build type to 'Release' as none was specified.")
@@ -157,7 +159,9 @@ if (CMAKE_CUDA_COMPILER)
     else ()
         enable_language (CUDA)
         list (APPEND PBRT_DEFINITIONS "PBRT_BUILD_GPU_RENDERER")
-        list (APPEND PBRT_DEFINITIONS "NVTX")
+        if (PBRT_NVTX)
+            list (APPEND PBRT_DEFINITIONS "NVTX")
+        endif ()
         set (PBRT_CUDA_ENABLED ON)
 
         # FIXME
@@ -187,24 +191,30 @@ if (CMAKE_CUDA_COMPILER)
                 "$<$<COMPILE_LANGUAGE:CUDA>:$<IF:$<AND:$<CONFIG:Debug>,$<NOT:$<BOOL:$<TARGET_PROPERTY:CUDA_PTX_COMPILATION>>>>,-G;-g,-lineinfo;-maxrregcount;128>>"
         )
 
-        # https://wagonhelm.github.io/articles/2018-03/detecting-cuda-capability-with-cmake
-        # Get CUDA compute capability
-        set (CHECK_CUDA_OUTPUT_EXE ${CMAKE_BINARY_DIR}/checkcuda)
-        if (MSVC)
+        if (PBRT_GPU_SHADER_MODEL STREQUAL "")
+            # https://wagonhelm.github.io/articles/2018-03/detecting-cuda-capability-with-cmake
+            # Get CUDA compute capability
+            set (CHECK_CUDA_OUTPUT_EXE ${CMAKE_BINARY_DIR}/checkcuda)
+            if (MSVC)
                 execute_process (COMMAND nvcc -lcuda ${CMAKE_SOURCE_DIR}/cmake/checkcuda.cu -ccbin ${CMAKE_CXX_COMPILER} -o ${CHECK_CUDA_OUTPUT_EXE})
-        else  ()
+            else  ()
                 execute_process (COMMAND nvcc -lcuda ${CMAKE_SOURCE_DIR}/cmake/checkcuda.cu -o ${CHECK_CUDA_OUTPUT_EXE})
-        endif ()
+            endif ()
 
-        execute_process (COMMAND ${CHECK_CUDA_OUTPUT_EXE}
-                         RESULT_VARIABLE CUDA_RETURN_CODE
-                         OUTPUT_VARIABLE CHECK_CUDA_OUTPUT)
+            execute_process (COMMAND ${CHECK_CUDA_OUTPUT_EXE}
+                             RESULT_VARIABLE CUDA_RETURN_CODE
+                             OUTPUT_VARIABLE CHECK_CUDA_OUTPUT)
 
-        if (NOT ${CUDA_RETURN_CODE} EQUAL 0)
-            message (SEND_ERROR ${CHECK_CUDA_OUTPUT})
-          else ()
-            set(ARCH "${CHECK_CUDA_OUTPUT}")
-            message (STATUS "CUDA Architecture: ${ARCH}")
+            if (NOT ${CUDA_RETURN_CODE} EQUAL 0)
+                message (SEND_ERROR ${CHECK_CUDA_OUTPUT})
+              else ()
+                set(ARCH "${CHECK_CUDA_OUTPUT}")
+                message (STATUS "Detected CUDA Architecture: ${ARCH}")
+                string (APPEND CMAKE_CUDA_FLAGS " --gpu-architecture=${ARCH}")
+            endif ()
+        else ()
+            set(ARCH "${PBRT_GPU_SHADER_MODEL}")
+            message (STATUS "Specified CUDA Architecture: ${ARCH}")
             string (APPEND CMAKE_CUDA_FLAGS " --gpu-architecture=${ARCH}")
         endif ()
 
@@ -785,21 +795,23 @@ target_compile_definitions (rgb2spec_opt PRIVATE ${PBRT_DEFINITIONS})
 target_compile_options (rgb2spec_opt PUBLIC ${PBRT_CXX_FLAGS})
 target_link_libraries (rgb2spec_opt PRIVATE ${CMAKE_THREAD_LIBS_INIT} pbrt_warnings)
 
-add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_aces.cpp
-    COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_aces.cpp ACES2065_1 
-    DEPENDS rgb2spec_opt)
+if (NOT PBRT_USE_PREGENERATED_RGB_TO_SPECTRUM_TABLES)
+  add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_aces.cpp
+      COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_aces.cpp ACES2065_1 
+      DEPENDS rgb2spec_opt)
 
-add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_dci_p3.cpp
-    COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_dci_p3.cpp DCI_P3
-    DEPENDS rgb2spec_opt)
+  add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_dci_p3.cpp
+      COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_dci_p3.cpp DCI_P3
+      DEPENDS rgb2spec_opt)
 
-add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_rec2020.cpp
-    COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_rec2020.cpp REC2020
-    DEPENDS rgb2spec_opt)
+  add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_rec2020.cpp
+      COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_rec2020.cpp REC2020
+      DEPENDS rgb2spec_opt)
 
-add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_srgb.cpp
-    COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_srgb.cpp sRGB
-    DEPENDS rgb2spec_opt)
+  add_custom_command (OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_srgb.cpp
+      COMMAND rgb2spec_opt 64 ${CMAKE_CURRENT_BINARY_DIR}/rgbspectrum_srgb.cpp sRGB
+      DEPENDS rgb2spec_opt)
+endif ()
 
 ######################
 # Main renderer
