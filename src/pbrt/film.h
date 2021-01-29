@@ -239,6 +239,7 @@ class RGBFilm : public FilmBase {
 
         pstd::vector<Float> estimations;
         pstd::vector<Float> weights;
+        pstd::vector<double> splats;
 
         // based on channel numbers
         for (int i = 0; i < 3; i++) {
@@ -246,24 +247,33 @@ class RGBFilm : public FilmBase {
             // loop over pixels (used as means storage) for computing real channel value
             pstd::vector<Float> cvalues;
             pstd::vector<Float> weightsSum;
+            pstd::vector<double> csplats;
 
             for (int j = 0; j < pixelMON.k; j++) {
                 cvalues.push_back(pixelMON.means[j].rgbSum[i]);
                 weightsSum.push_back(pixelMON.means[j].weightSum);
+                csplats.push_back(pixelMON.means[j].splatRGB[i]);
             }
 
-            auto cestimation = Estimate(cvalues, weightsSum);
+            auto cestimation = Estimate(cvalues, weightsSum, csplats);
 
             // add associated estimations and weights for the current channel obtained
             // weight depend of the pixels used for computing MON or PakMON
             estimations.push_back(cestimation.x);
             weights.push_back(cestimation.y);
+            splats.push_back(cestimation.z);
         }
 
         // computed filter weight sum based on each channel
         Float weightSum = (weights[0] + weights[1] + weights[2]) / 3.;
         
         RGB rgb(estimations[0], estimations[1], estimations[2]);
+
+        AtomicDouble splatRGB[3];
+        splatRGB[0] = splats[0];
+        splatRGB[1] = splats[1];
+        splatRGB[2] = splats[2];
+
         // RGB rgb(0., 0., 0.);
         // Float weightSum = estimated.second;
         // P3D Updates
@@ -290,7 +300,7 @@ class RGBFilm : public FilmBase {
 
         // Add splat value at pixel
         for (int c = 0; c < 3; ++c)
-            rgb[c] += splatScale * pixelMON.splatRGB[c] / filterIntegral;
+            rgb[c] += splatScale * splatRGB[c] / filterIntegral;
 
         // Convert _rgb_ to output RGB color space
         rgb = outputRGBFromSensorRGB * rgb;
@@ -337,7 +347,7 @@ class RGBFilm : public FilmBase {
     bool UsesVisibleSurface() const { return false; }
 
     PBRT_CPU_GPU
-    Point2f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum) const {
+    Point3f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum, pstd::vector<double> csplats) const {
             
         unsigned nElements = cvalues.size();
         pstd::vector<Float> means(cvalues); // copy of current channel values
@@ -346,6 +356,7 @@ class RGBFilm : public FilmBase {
         pstd::vector<int> sortedIndices = means.sort();
 
         Float weight, mean = 0.;
+        double csplat = 0;
 
         // compute median from means
         // find associated weightsum index and use it
@@ -355,6 +366,7 @@ class RGBFilm : public FilmBase {
 
             weight = weightsSum[unsortedIndex];
             mean = cvalues[unsortedIndex];
+            csplat = csplats[unsortedIndex];
         }
         else{
             int k_mean = int(nElements/2);
@@ -363,6 +375,7 @@ class RGBFilm : public FilmBase {
 
             weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
             mean = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
+            csplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
         }
         
         // Here use of PAKMON => compromise between Mean and MON
@@ -471,21 +484,22 @@ class RGBFilm : public FilmBase {
                 Float multFactor = pow(alpha, i);
 
                 // add left and right neighbor contribution
-                // vp stores in first element the sorted mean
                 mean += means[lowerIndex - i] * multFactor;
                 mean += means[higherIndex + i] * multFactor;
                 
                 // weighting contribution to take in account
-                // vp stores in second element the previous index of sorted mean
                 // use of this index to retrieve the associated weightsSum
                 weight += weightsSum[sortedIndices[lowerIndex]] * multFactor;
                 weight += weightsSum[sortedIndices[higherIndex]] * multFactor;
+
+                csplat += csplats[sortedIndices[lowerIndex]] * multFactor;
+                csplat += csplats[sortedIndices[higherIndex]] * multFactor;
             }
 
             // std::cout << "PAKMON value is: " << (mean / weight) << std::endl;
         }
 
-        return Point2f(mean, weight);
+        return Point3f(mean, weight, csplat);
     }
 
     PBRT_CPU_GPU
@@ -592,6 +606,7 @@ class RGBFilm : public FilmBase {
         Pixel() = default;
 
         double rgbSum[3] = {0., 0., 0.};
+        AtomicDouble splatRGB[3];
         double weightSum = 0.;
     };
 
@@ -600,7 +615,6 @@ class RGBFilm : public FilmBase {
         PixelMON() = default;
 
         Pixel means[kmon];
-        AtomicDouble splatRGB[3]; // stored here, check if is a good way to do that
         VarianceEstimator<Float> varianceEstimator;
 
         int k = kmon; // number of means clusters

@@ -32,9 +32,9 @@ Extended command line parameter:
 - `--startindex`: {unsigned} -- start output index of first generated image for new run ;
 - `--pakmon`: {bool} -- specify if PakMoN (based on k-MON) extension is used or not [0, 1].
 
-**Note:** current version enable to use `MoN` (Median of meaNs) estimator as output:
-- `kmon` set the number of Means to use. It is a constant value in order to work on GPU. Value can be update and available at the top of the `src/pbrt/film.h` file (default 11). You need to compile again the pbrt version. A value of `1`, is equivalent to classical mean estimator ;
-- `PakMoN` is also enable on GPU using the `kmon` parameter value.
+**Note:** current version enable the use `MoN` (Median of meaNs) estimator as output:
+- `kmon:` set the number of Means to use. It is a constant value in order to work on GPU. Value can be update and available at the top of the `src/pbrt/film.h` file (default 11). You need to compile again the pbrt version. A value of `1`, is equivalent to classical mean estimator ;
+- `PakMoN:` is also enable on GPU using the `kmon` parameter value.
   
 __TODO:__
 - `--independent`: {bool} -- adapt to GPU ; 

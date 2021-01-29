@@ -551,7 +551,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
         if (wt != 0) {
             PixelMON &pixel = pixels[pi];
             for (int i = 0; i < 3; ++i)
-                pixel.splatRGB[i].Add(wt * rgb[i]);
+                pixel.means[pixel.index].splatRGB[i].Add(wt * rgb[i]); // add to current index
         }
     }
 }
