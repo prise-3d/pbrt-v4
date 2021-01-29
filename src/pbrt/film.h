@@ -431,7 +431,12 @@ class RGBFilm : public FilmBase {
 
             // alpha and rho automatically set value
             Float alpha = distancesEntropy;
-            unsigned rho = (unsigned)(middleIndex * distancesEntropy) - 1;
+
+            if (alpha < 0.000000001) {
+                alpha = 0.000000001;
+            }
+            int rho = (int)(middleIndex * distancesEntropy) - (int)(nElements * 0.25); // try using avoid 30% (total) of current kmon
+        
 
             // std::cout << "-----------------------------------------" << std::endl;
             // std::cout << "=> Alpha value is: " << alpha << std::endl;
