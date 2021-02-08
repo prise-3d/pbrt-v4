@@ -969,8 +969,7 @@ pstd::optional<CameraRay> RealisticCamera::GenerateRay(CameraSample sample,
 
     // Compute weighting for _RealisticCamera_ ray
     Float cosTheta = Normalize(rFilm.d).z;
-    weight *= (shutterClose - shutterOpen) * Pow<4>(cosTheta) * exitPupilBoundsArea /
-              Sqr(LensRearZ());
+    weight *= Pow<4>(cosTheta) * exitPupilBoundsArea / Sqr(LensRearZ());
 
     return CameraRay{ray, SampledSpectrum(weight)};
 }

@@ -601,7 +601,6 @@ void GPURender(ParsedScene &scene) {
 
         std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
-<<<<<<< HEAD
         uint64_t randomseed;
         randomseed = rand();
 
@@ -610,15 +609,8 @@ void GPURender(ParsedScene &scene) {
         // Render!
         Timer timer;
         integrator->Render();
-=======
-    if (!Options->quiet) {
-        ReportKernelStats();
->>>>>>> bbc6052d434405c61891007a4fc142e2b746600e
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
-
-
-        CUDA_CHECK(cudaProfilerStop());
 
         if (!Options->quiet) {
             ReportKernelStats();
@@ -636,7 +628,7 @@ void GPURender(ParsedScene &scene) {
         integrator->camera.InitMetadata(&metadata);
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-        integrator->film.WriteImage(metadata, 1., i);
+        integrator->film.WriteImage(metadata);
     }
 }
 
