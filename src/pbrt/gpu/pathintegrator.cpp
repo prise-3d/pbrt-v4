@@ -601,7 +601,6 @@ void GPURender(ParsedScene &scene) {
 
         std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
-<<<<<<< HEAD
         uint64_t randomseed;
         randomseed = rand();
 
@@ -610,33 +609,33 @@ void GPURender(ParsedScene &scene) {
         // Render!
         Timer timer;
         integrator->Render();
-=======
-    if (!Options->quiet) {
-        ReportKernelStats();
->>>>>>> bbc6052d434405c61891007a4fc142e2b746600e
-
-        LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
-
-
-        CUDA_CHECK(cudaProfilerStop());
 
         if (!Options->quiet) {
             ReportKernelStats();
 
-            Printf("GPU Statistics:\n");
-            Printf("%s\n", integrator->stats->Print());
+            LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
+
+
+            CUDA_CHECK(cudaProfilerStop());
+
+            if (!Options->quiet) {
+                ReportKernelStats();
+
+                Printf("GPU Statistics:\n");
+                Printf("%s\n", integrator->stats->Print());
+            }
+
+            std::vector<GPULogItem> logs = ReadGPULogs();
+            for (const auto &item : logs)
+                Log(item.level, item.file, item.line, item.message);
+
+            ImageMetadata metadata;
+            metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+            integrator->camera.InitMetadata(&metadata);
+            metadata.renderTimeSeconds = timer.ElapsedSeconds();
+            metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+            integrator->film.WriteImage(metadata, 1., i);
         }
-
-        std::vector<GPULogItem> logs = ReadGPULogs();
-        for (const auto &item : logs)
-            Log(item.level, item.file, item.line, item.message);
-
-        ImageMetadata metadata;
-        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-        integrator->camera.InitMetadata(&metadata);
-        metadata.renderTimeSeconds = timer.ElapsedSeconds();
-        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-        integrator->film.WriteImage(metadata, 1., i);
     }
 }
 
