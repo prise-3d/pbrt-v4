@@ -610,32 +610,25 @@ void GPURender(ParsedScene &scene) {
         Timer timer;
         integrator->Render();
 
+        LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
+
         if (!Options->quiet) {
             ReportKernelStats();
 
-            LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
-
-
-            CUDA_CHECK(cudaProfilerStop());
-
-            if (!Options->quiet) {
-                ReportKernelStats();
-
-                Printf("GPU Statistics:\n");
-                Printf("%s\n", integrator->stats->Print());
-            }
-
-            std::vector<GPULogItem> logs = ReadGPULogs();
-            for (const auto &item : logs)
-                Log(item.level, item.file, item.line, item.message);
-
-            ImageMetadata metadata;
-            metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-            integrator->camera.InitMetadata(&metadata);
-            metadata.renderTimeSeconds = timer.ElapsedSeconds();
-            metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-            integrator->film.WriteImage(metadata, 1., i);
+            Printf("GPU Statistics:\n");
+            Printf("%s\n", integrator->stats->Print());
         }
+
+        std::vector<GPULogItem> logs = ReadGPULogs();
+        for (const auto &item : logs)
+            Log(item.level, item.file, item.line, item.message);
+
+        ImageMetadata metadata;
+        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+        integrator->camera.InitMetadata(&metadata);
+        metadata.renderTimeSeconds = timer.ElapsedSeconds();
+        metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
+        integrator->film.WriteImage(metadata);
     }
 }
 
