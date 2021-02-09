@@ -29,7 +29,7 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
     else if (name == "pakmon")
         estimator = std::make_unique<PakMONEstimator>(name);
     else if (name == "mean_or_mon")
-        estimator = std::make_unique<PakMONEstimator>(name);
+        estimator = std::make_unique<MeanOrMONEstimator>(name);
     else {
         printf("%s: estimator type unknown. Use of default: mean", name.c_str());
         estimator = std::make_unique<MeanEstimator>(name);
