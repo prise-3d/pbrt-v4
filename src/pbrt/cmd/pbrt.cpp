@@ -188,7 +188,6 @@ int main(int argc, char *argv[]) {
             ParseArg(&argv, "nimages", &options.nimages, onError) ||
             ParseArg(&argv, "startindex", &options.startIndex, onError) ||
             ParseArg(&argv, "folder", &options.folderName, onError) ||
-            // ParseArg(&argv, "kmon", &options.kmon, onError) ||
             ParseArg(&argv, "estimator", &options.estimator, onError) ||
             ParseArg(&argv, "independent", &options.independent, onError) ||
             ParseArg(&argv, "toply", &toPly, onError) ||

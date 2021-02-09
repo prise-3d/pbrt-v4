@@ -443,6 +443,7 @@ set (PBRT_SOURCE
   src/pbrt/bssrdf.cpp
   src/pbrt/bxdfs.cpp
   src/pbrt/cameras.cpp
+  src/pbrt/estimators.cpp
   src/pbrt/film.cpp
   src/pbrt/filters.cpp
   src/pbrt/interaction.cpp
@@ -473,6 +474,7 @@ set (PBRT_SOURCE_HEADERS
   src/pbrt/bssrdf.h
   src/pbrt/bxdfs.h
   src/pbrt/cameras.h
+  src/pbrt/estimators.h
   src/pbrt/film.h
   src/pbrt/filters.h
   src/pbrt/interaction.h
