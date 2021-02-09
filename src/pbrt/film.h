@@ -258,6 +258,9 @@ class RGBFilm : public FilmBase {
         pstd::vector<Float> weights;
         pstd::vector<double> splats;
 
+
+        // TODO : check if better to use IC comparisons over all channels
+        
         // based on channel numbers
         for (int i = 0; i < 3; i++) {
 
@@ -349,7 +352,7 @@ class RGBFilm : public FilmBase {
     PBRT_CPU_GPU
     Point3f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> csquared, pstd::vector<Float> weightsSum, pstd::vector<double> csplats) const {
             
-        unsigned nElements = cvalues.size();
+        // int nElements = cvalues.size();
         pstd::vector<Float> means(cvalues); // copy of current channel values
 
         // expected output
@@ -379,7 +382,7 @@ class RGBFilm : public FilmBase {
             Float meanWeight, meanMean = 0.;
             double meanSplat = 0;
 
-            for (int i = 0; i < nElements; i++) {
+            for (int i = 0; i < kmon; i++) {
                 
                 meanMean += means[i];
                 meanWeight += weightsSum[i];
@@ -396,11 +399,6 @@ class RGBFilm : public FilmBase {
             Float meanStdValue = (meanSquaredValues / meanWeight) - (currentMeanMean * currentMeanMean);
             Float meanIC = (1.96 * meanStdValue) / std::sqrt(meanWeight);
 
-            // std::cout << "=============================" << std::endl;
-            // std::cout << "Mean value is: " << currentMeanMean << std::endl;
-            // std::cout << "Std value value is: " << meanStdValue << std::endl;
-            // std::cout << "Mean weight is: " << meanWeight << std::endl;
-
             /////////////////////////////////
             // confidence interval of MON  //
             /////////////////////////////////
@@ -416,8 +414,8 @@ class RGBFilm : public FilmBase {
             // compute median from means
             // find associated weightsum index and use it
             // Classical MON
-            if (nElements % 2 == 1){
-                unsigned unsortedIndex = sortedIndices[int(nElements/2)];
+            if (kmon % 2 == 1){
+                unsigned unsortedIndex = sortedIndices[int(kmon/2)];
 
                 monWeight = weightsSum[unsortedIndex];
                 monMean = cvalues[unsortedIndex];
@@ -425,7 +423,7 @@ class RGBFilm : public FilmBase {
                 monSplat = csplats[unsortedIndex];
             }
             else{
-                int k_mean = int(nElements/2);
+                int k_mean = int(kmon/2);
                 unsigned firstIndex = sortedIndices[k_mean - 1];
                 unsigned secondIndex = sortedIndices[k_mean];
 
@@ -439,7 +437,6 @@ class RGBFilm : public FilmBase {
             Float monStdValue = (monSquaredValue / monWeight) - (currentMonMean * currentMonMean);
             Float monIC = (1.96 * monStdValue) / std::sqrt(monWeight);
 
-            // std::cout << "Comparison [mean IC vs MoN IC]: " << meanIC << " vs. " << monIC << std::endl;
             // return prefered estimator depending of IC
             if (meanIC <= monIC) {
                 return Point3f(meanMean, meanWeight, meanSplat);
@@ -456,15 +453,15 @@ class RGBFilm : public FilmBase {
             // compute median from means
             // find associated weightsum index and use it
             // Classical MON
-            if (nElements % 2 == 1){
-                unsigned unsortedIndex = sortedIndices[int(nElements/2)];
+            if (kmon % 2 == 1){
+                unsigned unsortedIndex = sortedIndices[int(kmon/2)];
 
                 weight = weightsSum[unsortedIndex];
                 mean = cvalues[unsortedIndex];
                 csplat = csplats[unsortedIndex];
             }
             else{
-                int k_mean = int(nElements/2);
+                int k_mean = int(kmon/2);
                 unsigned firstIndex = sortedIndices[k_mean - 1];
                 unsigned secondIndex = sortedIndices[k_mean];
 
@@ -510,7 +507,7 @@ class RGBFilm : public FilmBase {
                 Float distancesEntropy = getEntropy(distances);
 
                 // Computation of PakMON using \alpha and \rho value
-                unsigned middleIndex = int(nElements / 2);
+                unsigned middleIndex = int(kmon / 2);
 
                 // alpha and rho automatically set value
                 Float alpha = distancesEntropy;
@@ -518,13 +515,13 @@ class RGBFilm : public FilmBase {
                 if (alpha < 0.000000001) {
                     alpha = 0.000000001;
                 }
-                int rho = (int)(middleIndex * distancesEntropy) - (int)(nElements * 0.25); // try using avoid 30% (total) of current kmon
+                int rho = (int)(middleIndex * distancesEntropy) - (int)(kmon * 0.25); // try using avoid 30% (total) of current kmon
 
                 unsigned lowerIndex = 0;
                 unsigned higherIndex = 0;
             
                 // get current lower and higher index 
-                if (nElements % 2 == 0) {
+                if (kmon % 2 == 0) {
                     
                     lowerIndex = middleIndex - 1;
                     higherIndex = middleIndex;
