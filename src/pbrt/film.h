@@ -271,7 +271,6 @@ class RGBFilm : public FilmBase {
             } else{
                 currentEstimator = "mon";
             }
-            currentEstimator = "mean";
         }
 
         // based on channel numbers
