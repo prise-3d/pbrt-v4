@@ -258,9 +258,22 @@ class RGBFilm : public FilmBase {
         pstd::vector<Float> weights;
         pstd::vector<double> splats;
 
+        // default estimator used
+        std::string currentEstimator = estimator;
 
         // TODO : check if better to use IC comparisons over all channels
-        
+        // TODO : improve this part...
+        if (estimator.compare("mean_or_mon") == 0) {
+            
+            // if true, use of mean
+            if (MeanOrMon(p)) {
+                currentEstimator = "mean";
+            } else{
+                currentEstimator = "mon";
+            }
+            currentEstimator = "mean";
+        }
+
         // based on channel numbers
         for (int i = 0; i < 3; i++) {
 
@@ -277,7 +290,7 @@ class RGBFilm : public FilmBase {
                 csplats.push_back(pixelMON.means[j].splatRGB[i]);
             }
 
-            auto cestimation = Estimate(cvalues, csquared, weightsSum, csplats);
+            auto cestimation = Estimate(currentEstimator, cvalues, csquared, weightsSum, csplats);
 
             // add associated estimations and weights for the current channel obtained
             // weight depend of the pixels used for computing MON or PakMON
@@ -350,30 +363,32 @@ class RGBFilm : public FilmBase {
     bool UsesVisibleSurface() const { return false; }
 
     PBRT_CPU_GPU
-    Point3f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> csquared, pstd::vector<Float> weightsSum, pstd::vector<double> csplats) const {
-            
-        // int nElements = cvalues.size();
-        pstd::vector<Float> means(cvalues); // copy of current channel values
+    bool MeanOrMon(const Point2i &p) const {
 
-        // expected output
-        Float weight, mean = 0.;
-        double csplat = 0;
+        const PixelMON &pixelMON = pixels[p];
 
-        // if mean as current estimator or unknown estimator passed as parameter
-        if (estimator == "mean" || !pstd::in_array<std::string>(estimator, estimators)) {
+        // return true if use of mean
+        // return false if use of MoN
+        Float meanICSum = 0.;
+        Float monICSum = 0.;
 
-            // classical mean, hence all values are needed
-            for (int i = 0; i < kmon; i++) {
-                
-                mean += means[i];
-                weight += weightsSum[i];
-                csplat += csplats[i];
+        // based on channel numbers
+        for (int i = 0; i < 3; i++) {
+
+            // loop over pixels (used as means storage) for computing real channel value
+            pstd::vector<Float> cvalues;
+            pstd::vector<Float> csquared;
+            pstd::vector<Float> weightsSum;
+            pstd::vector<double> csplats;
+
+            for (int j = 0; j < pixelMON.k; j++) {
+                cvalues.push_back(pixelMON.means[j].rgbSum[i]);
+                csquared.push_back(pixelMON.means[j].squaredSum[i]);
+                weightsSum.push_back(pixelMON.means[j].weightSum);
+                csplats.push_back(pixelMON.means[j].splatRGB[i]);
             }
 
-            return Point3f(mean, weight, csplat);
-        }
-
-        if (estimator == "mean_or_mon") {
+            pstd::vector<Float> means(cvalues); // copy of current channel values
 
             // depending of confidence interval of predictor, compute the required value
             // need to compute mean value, hence all values are needed
@@ -437,15 +452,39 @@ class RGBFilm : public FilmBase {
             Float monStdValue = (monSquaredValue / monWeight) - (currentMonMean * currentMonMean);
             Float monIC = (1.96 * monStdValue) / std::sqrt(monWeight);
 
-            // return prefered estimator depending of IC
-            if (meanIC <= monIC) {
-                return Point3f(meanMean, meanWeight, meanSplat);
-            } else {
-                return Point3f(monMean, monWeight, monSplat);
-            }
+            meanICSum += meanIC;
+            monICSum += monIC;
         }
 
-        if (estimator == "mon" || estimator == "pakmon") {
+        return (meanICSum / 3)  <= (monICSum / 3);
+    }
+
+    PBRT_CPU_GPU
+    Point3f Estimate(std::string currentEstimator, pstd::vector<Float> cvalues, pstd::vector<Float> csquared, pstd::vector<Float> weightsSum, pstd::vector<double> csplats) const {
+            
+        // int nElements = cvalues.size();
+        pstd::vector<Float> means(cvalues); // copy of current channel values
+
+        // expected output
+        Float weight, mean = 0.;
+        double csplat = 0;
+
+        // if mean as current estimator or unknown estimator passed as parameter
+        // TODO: fix use of in_array function
+        if (currentEstimator.compare("mean") == 0) { // || !pstd::in_array<std::string>(estimator, estimators)) {
+
+            // classical mean, hence all values are needed
+            for (int i = 0; i < kmon; i++) {
+                
+                mean += means[i];
+                weight += weightsSum[i];
+                csplat += csplats[i];
+            }
+
+            return Point3f((mean / kmon), (weight / kmon), (csplat / kmon));
+        }
+
+        if (currentEstimator.compare("mon") == 0 || currentEstimator.compare("pakmon") == 0) {
 
             // sort means vector and get sorted indices as output
             pstd::vector<int> sortedIndices = means.sort();
@@ -471,7 +510,7 @@ class RGBFilm : public FilmBase {
             }
             
             // Here use of PAKMON => compromise between Mean and MON
-            if (estimator == "pakmon") {
+            if (currentEstimator.compare("pakmon") == 0) {
                 
                 Float meansSum = 0;
 
