@@ -36,7 +36,7 @@
 namespace pbrt {
 
 // P3D update  mon parameter (if value of 1, no kmon use, hence classical mean)
-const int nbuffers = 11;
+const int nbuffers = 12;
 
 // Need to externalise PixelWindow declaration for RGBFilm
 // P3D Updates
@@ -105,6 +105,22 @@ class MONEstimator : public Estimator {
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
+};
+
+// AlphaMON Estimator class
+// Median of meaNs: use of median value from available mean buffers
+// use of an alpha criterion for convergence
+class AlphaMONEstimator : public Estimator {
+
+    public:
+
+        AlphaMONEstimator(const std::string &name, Float alpha) : Estimator(name), alpha(alpha) {}; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+    private:
+        Float alpha; // confidence criterion in [0, 1]
 };
 
 // PakMON Estimation class

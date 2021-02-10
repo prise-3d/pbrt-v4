@@ -22,10 +22,15 @@ namespace pbrt {
 std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
 
     std::unique_ptr<Estimator> estimator;
+
+    // TODO: Later use of paramset maybe..
+
     if (name == "mean")
         estimator = std::make_unique<MeanEstimator>(name);
     else if (name == "mon")
         estimator = std::make_unique<MONEstimator>(name);
+    else if (name == "amon")
+        estimator = std::make_unique<AlphaMONEstimator>(name, 0.5);
     else if (name == "pakmon")
         estimator = std::make_unique<PakMONEstimator>(name);
     else if (name == "mean_or_mon")
@@ -223,13 +228,11 @@ void PakMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &
             higherIndex = middleIndex;
             
         } else {
-            lowerIndex = middleIndex - 1;
-            higherIndex = middleIndex - 1;
+            lowerIndex = middleIndex;
+            higherIndex = middleIndex;
         }
 
-        // std::cout << "MON value is: " << (mean / weight) << std::endl;
-
-        // use of `vp` which stores ordered mean and 
+        // use of sorted means and relative sorted indices
         for (int j = 1; j < rho + 1; j++) {
 
             // current neighbor multiple factor
@@ -293,6 +296,104 @@ Float PakMONEstimator::getEntropy(pstd::vector<Float> values) const {
 
     return entropy;
 };
+
+
+void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+{
+    weightSum = 0.;
+
+    // based on channel numbers
+    for (int i = 0; i < 3; i++) {
+
+        // store channel information
+        pstd::vector<Float> cvalues;
+        pstd::vector<Float> weightsSum;
+        pstd::vector<double> csplats;
+
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            cvalues.push_back(pixelWindow.buffers[j].rgbSum[i]);
+            // per channel management (but weight can be different depending of median buffer)
+            weightsSum.push_back(pixelWindow.buffers[j].weightSum);
+            csplats.push_back(pixelWindow.buffers[j].splatRGB[i]);
+        }
+
+        // temp storage in order to sort values
+        pstd::vector<Float> means(cvalues);
+        pstd::vector<int> sortedIndices = means.sort();
+
+        // sum storage
+        Float meansSum = 0;
+
+        // PakMON expected output
+        Float weight, mean = 0.;
+        double csplat = 0;
+
+        // by default classical MON values
+        if (nbuffers % 2 == 1){
+            unsigned unsortedIndex = sortedIndices[int(nbuffers/2)];
+
+            mean = cvalues[unsortedIndex];
+            weight = weightsSum[unsortedIndex];
+            csplat = csplats[unsortedIndex];
+        }
+        else{
+            int k_mean = int(nbuffers/2);
+            unsigned firstIndex = sortedIndices[k_mean - 1];
+            unsigned secondIndex = sortedIndices[k_mean];
+
+            mean = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
+            weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+            csplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
+        }
+
+        // Computation of PakMON using \alpha and \rho value
+        unsigned middleIndex = int(nbuffers / 2);
+
+        unsigned lowerIndex = 0;
+        unsigned higherIndex = 0;
+        unsigned until = middleIndex;
+    
+        // get current lower and higher index 
+        if (nbuffers % 2 == 0) {
+            
+            lowerIndex = middleIndex - 1;
+            higherIndex = middleIndex;
+            until = middleIndex - 1;
+            
+        } else {
+            lowerIndex = middleIndex;
+            higherIndex = middleIndex;
+        }
+
+        // use of sorted means and relative sorted indices
+        for (int j = 1; j < until + 1; j++) {
+
+            // current neighbor multiple factor
+            Float multFactor = pow(alpha, j);
+
+            // add left and right neighbor contribution
+            mean += means[lowerIndex - j] * multFactor;
+            mean += means[higherIndex + j] * multFactor;
+            
+            // weighting contribution to take in account
+            // use of this index to retrieve the associated weightsSum
+            weight += weightsSum[sortedIndices[lowerIndex]] * multFactor;
+            weight += weightsSum[sortedIndices[higherIndex]] * multFactor;
+
+            csplat += csplats[sortedIndices[lowerIndex]] * multFactor;
+            csplat += csplats[sortedIndices[higherIndex]] * multFactor;
+        }
+
+        // store channel information
+        weightSum += weight;
+        rgb[i] = mean;
+        splatRGB[i] = csplat;
+    }
+
+    // divide per number of channel the weightSum
+    weightSum /= 3;
+};
+
 
 void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
