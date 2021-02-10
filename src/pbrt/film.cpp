@@ -482,12 +482,14 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
 
     // // Allocate Pixel for Array1D
     // ParallelFor2D(p.pixelBounds, [&](Point2i p) {
-    //     for (int i = 0; i < *Options->kmon; i++) {
-    //         pixels[p].means = Array1D<Pixel>(*Options->kmon, alloc);
+    //     for (int i = 0; i < *Options->nbuffers; i++) {
+    //         pixels[p]buffers = Array1D<Pixel>(*Options->nbuffers, alloc);
     //     }
     // }); 
 
-    filmPixelMemory += pixelBounds.Area() * sizeof(PixelMON);
+    estimator = Estimator::Create(Options->estimator);
+
+    filmPixelMemory += pixelBounds.Area() * sizeof(PixelWindow);
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
 }
 
@@ -514,9 +516,9 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
         // Evaluate filter at _pi_ and add splat contribution
         Float wt = filter.Evaluate(Point2f(p - pi - Vector2f(0.5, 0.5)));
         if (wt != 0) {
-            PixelMON &pixel = pixels[pi];
+            PixelWindow &pixel = pixels[pi];
             for (int i = 0; i < 3; ++i)
-                pixel.means[pixel.index].splatRGB[i].Add(wt * rgb[i]); // add to current index
+                pixel.buffers[pixel.index].splatRGB[i].Add(wt * rgb[i]); // add to current index
         }
     }
 }
