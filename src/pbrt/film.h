@@ -14,6 +14,7 @@
 #include <pbrt/base/bxdf.h>
 #include <pbrt/base/camera.h>
 #include <pbrt/base/film.h>
+#include <pbrt/estimators.h>
 #include <pbrt/bsdf.h>
 #include <pbrt/util/color.h>
 #include <pbrt/util/colorspace.h>
@@ -23,6 +24,7 @@
 #include <pbrt/util/spectrum.h>
 #include <pbrt/util/transform.h>
 #include <pbrt/util/vecmath.h>
+#include <pbrt/util/math.h>
 
 #include <atomic>
 #include <map>
@@ -32,9 +34,6 @@
 #include <math.h>
 
 namespace pbrt {
-
-// P3D update k mon parameter (default 1, no kmon use, hence classical mean)
-const int kmon = 11;
 
 // PixelSensor Definition
 class PixelSensor {
@@ -246,69 +245,17 @@ class RGBFilm : public FilmBase {
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const {
 
         // P3D Updates
-        const PixelMON &pixelMON = pixels[p];
+        const PixelWindow &pixelWindow = pixels[p];
         // update estimated value for rgbSum and weightSum
 
         //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
 
-        pstd::vector<Float> estimations;
-        pstd::vector<Float> weights;
-        pstd::vector<double> splats;
-
-        // based on channel numbers
-        for (int i = 0; i < 3; i++) {
-
-            // loop over pixels (used as means storage) for computing real channel value
-            pstd::vector<Float> cvalues;
-            pstd::vector<Float> weightsSum;
-            pstd::vector<double> csplats;
-
-            for (int j = 0; j < pixelMON.k; j++) {
-                cvalues.push_back(pixelMON.means[j].rgbSum[i]);
-                weightsSum.push_back(pixelMON.means[j].weightSum);
-                csplats.push_back(pixelMON.means[j].splatRGB[i]);
-            }
-
-            auto cestimation = Estimate(cvalues, weightsSum, csplats);
-
-            // add associated estimations and weights for the current channel obtained
-            // weight depend of the pixels used for computing MON or PakMON
-            estimations.push_back(cestimation.x);
-            weights.push_back(cestimation.y);
-            splats.push_back(cestimation.z);
-        }
-
-        // computed filter weight sum based on each channel
-        Float weightSum = (weights[0] + weights[1] + weights[2]) / 3.;
-        
-        RGB rgb(estimations[0], estimations[1], estimations[2]);
-
         AtomicDouble splatRGB[3];
-        splatRGB[0] = splats[0];
-        splatRGB[1] = splats[1];
-        splatRGB[2] = splats[2];
+        RGB rgb(0, 0, 0);
+        Float weightSum = 0.;
 
-        // RGB rgb(0., 0., 0.);
-        // Float weightSum = estimated.second;
-        // P3D Updates
-        // if (weightSum != 0)
-        //   rgb /= weightSum;
-
-        // // Add splat value at pixel
-        // for (int c = 0; c < 3; ++c)
-        //     rgb[c] += splatScale * pixel.splatRGB[c] / filterIntegral;
-
-        // // Scale pixel value by _scale_
-        // rgb *= scale;
-
-        // // Convert _rgb_ to output RGB color space
-        // rgb = outputRGBFromSensorRGB * rgb;
-
-        // const Pixel &pixel = pixels[p];
-        // RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
-        // Normalize _rgb_ with weight sum
-        // Float weightSum = pixel.weightSum;
+        estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
         
         if (weightSum != 0)
             rgb /= weightSum;
@@ -337,251 +284,30 @@ class RGBFilm : public FilmBase {
         }
 
         DCHECK(InsideExclusive(pFilm, pixelBounds));
+
         // Update pixel values with filtered sample contribution
-        PixelMON &pixelMON = pixels[pFilm];
-        // for (int c = 0; c < 3; ++c) {
-            // pixel.rgbSum[c] += weight * rgb[c];
+        PixelWindow &pixelWindow = pixels[pFilm];
+        
+        // add sample value inside current package
+        pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
+        pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
+        pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
 
-        // }
-        pixelMON.means[pixelMON.index].rgbSum[0] += rgb[0];
-        pixelMON.means[pixelMON.index].rgbSum[1] += rgb[1];
-        pixelMON.means[pixelMON.index].rgbSum[2] += rgb[2];
+        // add of squared sum of new pixel value
+        pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
+        pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
+        pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
 
-        pixelMON.means[pixelMON.index].weightSum += weight;
+        pixelWindow.buffers[pixelWindow.index].weightSum += weight;
 
-        pixelMON.index += 1;
+        pixelWindow.index += 1;
 
-        if (pixelMON.index >= pixelMON.k)
-            pixelMON.index = 0;
-        // P3D Updates
+        if (pixelWindow.index >= pixelWindow.windowSize)
+            pixelWindow.index = 0;
     }
 
     PBRT_CPU_GPU
     bool UsesVisibleSurface() const { return false; }
-
-    PBRT_CPU_GPU
-    Point3f Estimate(pstd::vector<Float> cvalues, pstd::vector<Float> weightsSum, pstd::vector<double> csplats) const {
-            
-        unsigned nElements = cvalues.size();
-        pstd::vector<Float> means(cvalues); // copy of current channel values
-
-        // sort means vector and get sorted indices as output
-        pstd::vector<int> sortedIndices = means.sort();
-
-        Float weight, mean = 0.;
-        double csplat = 0;
-
-        // compute median from means
-        // find associated weightsum index and use it
-        // Classical MON
-        if (nElements % 2 == 1){
-            unsigned unsortedIndex = sortedIndices[int(nElements/2)];
-
-            weight = weightsSum[unsortedIndex];
-            mean = cvalues[unsortedIndex];
-            csplat = csplats[unsortedIndex];
-        }
-        else{
-            int k_mean = int(nElements/2);
-            unsigned firstIndex = sortedIndices[k_mean - 1];
-            unsigned secondIndex = sortedIndices[k_mean];
-
-            weight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-            mean = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
-            csplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
-        }
-        
-        // Here use of PAKMON => compromise between Mean and MON
-        if (pakmonUsed >= 1) {
-            /* 
-            TODO : include here use of PakMON with entropy computation
-            => Adapt Python code
-            => check how to manage weight (weighted?)
-            */
-            /*
-            def variance_increase(means):
-                distances = []
-                l = sorted(means.copy())
-                
-                for i in range(len(means)):
-                    
-                    if i > 0:
-                        distances.append(np.var(l[:i]))
-                    
-                return distances
-            */
-
-            Float meansSum = 0;
-
-            for (int i = 0; i < cvalues.size(); i++)
-                meansSum += cvalues[i];
-
-            Float currentMean = meansSum / cvalues.size();
-                
-            // compute variance distance evolution
-            pstd::vector<Float> distances;
-
-            for (int i = 0; i < means.size(); i++) {
-                
-                // use of sorted means in order to compute variance evolution by step 1
-                if (i > 1) {
-
-                    // compute variance of each elements
-                    Float var = 0;
-                    
-                    // use of previously sorted means
-                    for(int j = 0; j < i; j++)
-                    {
-                        var += (means[j] - currentMean) * (means[j] - currentMean);
-                    }
-                    var /= (i + 1);
-
-                    // add new 
-                    distances.push_back(var);
-                }
-            }
-
-            // use of variance evolution and compute entropy
-            Float distancesEntropy = getEntropy(distances);
-
-            // Computation of PakMON using \alpha and \rho value
-            unsigned middleIndex = int(nElements / 2);
-
-            // alpha and rho automatically set value
-            Float alpha = distancesEntropy;
-
-            if (alpha < 0.000000001) {
-                alpha = 0.000000001;
-            }
-            int rho = (int)(middleIndex * distancesEntropy) - (int)(nElements * 0.25); // try using avoid 30% (total) of current kmon
-        
-
-            // std::cout << "-----------------------------------------" << std::endl;
-            // std::cout << "=> Alpha value is: " << alpha << std::endl;
-            // std::cout << "=> Kappa value is: " << rho << std::endl;
-
-            // now add of neighborhood information using previous defined params
-            // sum_to_divide = 1
-            // weighted_median = median # default only median
-            
-            // for i in range(1, rho + 1):
-                
-            //     # confidence {alpha} parameter using distance criterion
-            //     mult_factor = math.pow(alpha, i)
-                
-            //     # add left and right neighbor contribution
-            //     weighted_median += sorted_means[lower_index - i] * mult_factor
-            //     weighted_median += sorted_means[higher_index + i] * mult_factor
-                
-            //     # weighting contribution to take in account
-            //     sum_to_divide += 2 * mult_factor
-            
-            // # weighted median with neigborhood information
-            // return weighted_median / sum_to_divide
-
-            unsigned lowerIndex = 0;
-            unsigned higherIndex = 0;
-        
-            // get current lower and higher index 
-            if (nElements % 2 == 0) {
-                
-                lowerIndex = middleIndex - 1;
-                higherIndex = middleIndex;
-                
-            } else {
-                lowerIndex = middleIndex - 1;
-                higherIndex = middleIndex - 1;
-            }
-
-            // std::cout << "MON value is: " << (mean / weight) << std::endl;
-
-            // use of `vp` which stores ordered mean and 
-            for (int i = 1; i < rho + 1; i++) {
-
-                // current neighbor multiple factor
-                Float multFactor = pow(alpha, i);
-
-                // add left and right neighbor contribution
-                mean += means[lowerIndex - i] * multFactor;
-                mean += means[higherIndex + i] * multFactor;
-                
-                // weighting contribution to take in account
-                // use of this index to retrieve the associated weightsSum
-                weight += weightsSum[sortedIndices[lowerIndex]] * multFactor;
-                weight += weightsSum[sortedIndices[higherIndex]] * multFactor;
-
-                csplat += csplats[sortedIndices[lowerIndex]] * multFactor;
-                csplat += csplats[sortedIndices[higherIndex]] * multFactor;
-            }
-
-            // std::cout << "PAKMON value is: " << (mean / weight) << std::endl;
-        }
-
-        return Point3f(mean, weight, csplat);
-    }
-
-    PBRT_CPU_GPU
-    Float getEntropy(pstd::vector<Float> values) const {
-        /*
-        arr = np.array(arr)
-        eigen_values = []
-        sum_eigen_values = (arr * arr).sum()
-
-        for val in arr:
-            eigen_values.append(val * val)
-
-        v = []
-
-        for val in eigen_values:
-            # avoid dividing by zero error
-            v.append(val / (sum_eigen_values + sys.float_info.epsilon))
-
-        entropy = 0
-
-        for val in v:
-            if val > 0:
-                entropy += val * math.log(val)
-
-        entropy *= -1
-
-        entropy /= math.log(len(v))
-
-        return entropy
-        */
-
-        // computation of squared values
-        Float sumEigenValues = 0;
-        pstd::vector<Float> eigenValues(values.size());
-
-        for (int i = 0; i < values.size(); i++) {
-            Float sum = values[i] * values[i];
-            eigenValues[i] = sum;
-            sumEigenValues += sum;
-        }
-
-        // normalization the squared values
-        pstd::vector<Float> v(values.size());
-
-        for (int i = 0; i < values.size(); i++) {
-            // add of epsilon value
-            v[i] = eigenValues[i] / (sumEigenValues + 0.000000000001);
-        }
-
-        // computation of entropy
-        Float entropy = 0;
-
-        for (int i = 0; i < values.size(); i++) {
-            if (v[i] > 0) {
-                entropy += v[i] * log(v[i]);
-            }
-        }
-
-        entropy *= -1;
-
-        entropy /= log(values.size());
-
-        return entropy;
-    }
 
     RGBFilm() = default;
     RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
@@ -616,26 +342,6 @@ class RGBFilm : public FilmBase {
     //     VarianceEstimator<Float> varianceEstimator;
     // };
 
-    // P3D Updates
-    struct Pixel {
-        Pixel() = default;
-
-        double rgbSum[3] = {0., 0., 0.};
-        AtomicDouble splatRGB[3];
-        double weightSum = 0.;
-    };
-
-    // P3D Updates
-    struct PixelMON {
-        PixelMON() = default;
-
-        Pixel means[kmon];
-        VarianceEstimator<Float> varianceEstimator;
-
-        int k = kmon; // number of means clusters
-        int index = 0; // keep track of index used
-        bool filled = false;
-    };
 
     // RGBFilm Private Members
     const RGBColorSpace *colorSpace;
@@ -643,8 +349,8 @@ class RGBFilm : public FilmBase {
     bool writeFP16;
     Float filterIntegral;
     SquareMatrix<3> outputRGBFromSensorRGB;
-    Array2D<PixelMON> pixels;
-    unsigned pakmonUsed = *Options->pakmon;
+    Array2D<PixelWindow> pixels;
+    std::unique_ptr<Estimator> estimator;
 };
 
 // GBufferFilm Definition

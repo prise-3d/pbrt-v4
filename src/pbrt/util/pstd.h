@@ -23,6 +23,13 @@
 
 namespace pstd {
 
+// P3D update usefull method
+template <typename T>
+PBRT_CPU_GPU inline bool in_array(const T &value, const std::vector<T> &array)
+{
+    return std::find(array.begin(), array.end(), value) != array.end();
+}
+
 template <typename T>
 PBRT_CPU_GPU inline void swap(T &a, T &b) {
     T tmp = std::move(a);
