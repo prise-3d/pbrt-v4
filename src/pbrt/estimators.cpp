@@ -428,12 +428,12 @@ void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Floa
         Float meanWeight, meanMean = 0.;
         double meanSplat = 0;
 
-        for (int i = 0; i < nbuffers; i++) {
+        for (int j = 0; j < nbuffers; j++) {
             
-            meanMean += means[i];
-            meanSquaredValues += csquared[i];
-            meanWeight += weightsSum[i];
-            meanSplat += csplats[i];
+            meanMean += means[j];
+            meanSquaredValues += csquared[j];
+            meanWeight += weightsSum[j];
+            meanSplat += csplats[j];
         }
 
         /////////////////////////////////
