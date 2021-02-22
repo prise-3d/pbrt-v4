@@ -527,9 +527,10 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
         alphaMonEstimators.at(i)->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
 
         Float currentLErrorMean = 0.;
+
         // compute quadratic error of RGB values
         for (int j = 0; j < 3; j++) {
-            currentLErrorMean += pow(rgbCurrentMean[i] - rgbMean[i], 3);
+            currentLErrorMean += pow(rgbCurrentMean[i] - rgbMean[i], 2);
         }
 
         squaredErrorMean.push_back(currentLErrorMean);
@@ -558,8 +559,9 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
         }
     }
 
-    std::cout << "Chosen alpha value is: " << alpha << std::endl;
+    // std::cout << "Chosen alpha value is: " << alpha << std::endl;
 
+    // use of Alpha Mon estimator with specific alpha value chosen
     alphaMonEstimators.at(chosenAlphaMoNIndex)->Estimate(pixelWindow, rgb, weightSum, splatRGB);
 
     // compute errors from RGB values

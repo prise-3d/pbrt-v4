@@ -188,16 +188,16 @@ class MeanOrMONEstimator : public Estimator {
     public:
 
         MeanOrMONEstimator(const std::string &name) : Estimator(name) {
-            meanEstimator = Estimator::Create("mean");
-            monEstimator = Estimator::Create("mon");
+            meanEstimator = std::make_unique<MeanEstimator>("mean");
+            monEstimator = std::make_unique<MONEstimator>("mon");
         }; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
     private:
-        std::unique_ptr<Estimator> meanEstimator;
-        std::unique_ptr<Estimator> monEstimator;
+        std::unique_ptr<MeanEstimator> meanEstimator;
+        std::unique_ptr<MONEstimator> monEstimator;
 };
 
 }  // namespace pbrt
