@@ -119,8 +119,48 @@ class AlphaMONEstimator : public Estimator {
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
+        Float getAlpha() {
+            return alpha;
+        };
+
+        void setAlpha(Float alpha) {
+            this->alpha = alpha;
+        };
+
     private:
         Float alpha; // confidence criterion in [0, 1]
+};
+
+// AlphaMON Estimator class
+// Median of meaNs: use of median value from available mean buffers
+// use of an alpha criterion for convergence
+class AutoAlphaMONEstimator : public Estimator {
+
+    public:
+
+        AutoAlphaMONEstimator(const std::string &name, unsigned n) : Estimator(name), n(n) {
+            meanEstimator = std::make_unique<MeanEstimator>("mean");
+            monEstimator = std::make_unique<MONEstimator>("mon");
+
+            for (int i = 0; i < n + 1; i++) {
+
+                // determine alpha parameter based
+                Float alpha = (1.0 / Float(n)) * (i);
+
+                std::unique_ptr<AlphaMONEstimator> amonSpecific = std::make_unique<AlphaMONEstimator>("amon", alpha);
+
+                alphaMonEstimators.push_back(std::move(amonSpecific)); 
+            }
+        }; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+    private:
+        unsigned n; // number of step when searching optimal alpha value
+        std::vector<std::unique_ptr<AlphaMONEstimator>> alphaMonEstimators;
+        std::unique_ptr<MeanEstimator> meanEstimator;
+        std::unique_ptr<MONEstimator> monEstimator;
 };
 
 // PakMON Estimation class
@@ -148,16 +188,16 @@ class MeanOrMONEstimator : public Estimator {
     public:
 
         MeanOrMONEstimator(const std::string &name) : Estimator(name) {
-            meanEstimator = Estimator::Create("mean");
-            monEstimator = Estimator::Create("mon");
+            meanEstimator = std::make_unique<MeanEstimator>("mean");
+            monEstimator = std::make_unique<MONEstimator>("mon");
         }; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
     private:
-        std::unique_ptr<Estimator> meanEstimator;
-        std::unique_ptr<Estimator> monEstimator;
+        std::unique_ptr<MeanEstimator> meanEstimator;
+        std::unique_ptr<MONEstimator> monEstimator;
 };
 
 }  // namespace pbrt
