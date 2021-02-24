@@ -24,7 +24,6 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name, Bounds2i &
     std::unique_ptr<Estimator> estimator;
 
     // TODO: Later use of paramset maybe..
-
     if (name == "mean")
         estimator = std::make_unique<MeanEstimator>(name, pixelBounds, alloc);
     else if (name == "mon")
@@ -71,15 +70,19 @@ void Estimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
         pixelWindow.index = 0;
 }
 
+void Estimator::GetEstimation(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const {
+    
+    const PixelWindow &pixelWindow = pixels[pFilm];
+
+    Estimate(pixelWindow, rgb, weightSum, splatRGB);
+}
+
 std::string Estimator::ToString() const {
     return name + "Estimator";
 }
 
-void MeanEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void MeanEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
-    
-    const PixelWindow &pixelWindow = pixels[pFilm];
-
     weightSum = 0.;
 
     // get each weightSum of pixelMoN
@@ -101,11 +104,8 @@ void MeanEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, A
     }
 };
 
-void MONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void MONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
-
-    const PixelWindow &pixelWindow = pixels[pFilm];
-    
     weightSum = 0.;
 
     // based on channel numbers
@@ -160,10 +160,8 @@ void MONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, At
     weightSum /= 3;
 };
 
-void PakMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void PakMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
-    const PixelWindow &pixelWindow = pixels[pFilm];
-
     weightSum = 0.;
 
     // based on channel numbers
@@ -329,10 +327,8 @@ Float PakMONEstimator::getEntropy(pstd::vector<Float> values) const {
 };
 
 
-void AlphaMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
-    const PixelWindow &pixelWindow = pixels[pFilm];
-
     weightSum = 0.;
 
     // based on channel numbers
@@ -428,10 +424,8 @@ void AlphaMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSu
 };
 
 
-void MeanOrMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
-    const PixelWindow &pixelWindow = pixels[pFilm];
-
     // Check use of mon or use of mean based on IC
     Float meanICSum = 0.;
     Float monICSum = 0.;
@@ -522,28 +516,26 @@ void MeanOrMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightS
 
     // check use of mean or mon
     if ((meanICSum / 3)  <= (monICSum / 3)) {
-        meanEstimator->Estimate(pFilm, rgb, weightSum, splatRGB);
+        meanEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
     } else {
-        monEstimator->Estimate(pFilm, rgb, weightSum, splatRGB);
+        monEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
     }
 };
 
 
-void AutoAlphaMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
-    const PixelWindow &pixelWindow = pixels[pFilm];
-
     RGB rgbMean;
     Float weightMean;
     AtomicDouble splatRGBMean[3];
 
-    meanEstimator->Estimate(pFilm, rgbMean, weightMean, splatRGBMean);
+    meanEstimator->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
 
     RGB rgbMON;
     Float weightMON;
     AtomicDouble splatRGBMON[3];
 
-    monEstimator->Estimate(pFilm, rgbMON, weightMON, splatRGBMON);
+    monEstimator->Estimate(pixelWindow, rgbMON, weightMON, splatRGBMON);
 
     pstd::vector<Float> squaredErrorMON;
     pstd::vector<Float> squaredErrorMean;
@@ -558,7 +550,7 @@ void AutoAlphaMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weig
         Float weightCurrentMean;
         AtomicDouble splatRGBCurrentMean[3];
 
-        alphaMonEstimators.at(i)->Estimate(pFilm, rgbMean, weightMean, splatRGBMean);
+        alphaMonEstimators.at(i)->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
 
         Float currentLErrorMean = 0.;
 
@@ -585,7 +577,7 @@ void AutoAlphaMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weig
     int chosenAlphaMoNIndex = 0;
     for (int i = 0; i < n + 1; i++) { 
         
-        //std::cout << meanError << " vs " << squaredErrorMean[i] << std::endl;
+        // std::cout << meanError << " vs " << squaredErrorMean[i] << std::endl;
         if (squaredErrorMean[i] > meanError) {
             alpha = (1.0 / Float(n)) * (i);
             chosenAlphaMoNIndex = i;
@@ -596,7 +588,7 @@ void AutoAlphaMONEstimator::Estimate(const Point2i &pFilm, RGB &rgb, Float &weig
     // std::cout << "Chosen alpha value is: " << alpha << std::endl;
 
     // use of Alpha Mon estimator with specific alpha value chosen
-    alphaMonEstimators.at(chosenAlphaMoNIndex)->Estimate(pFilm, rgb, weightSum, splatRGB);
+    alphaMonEstimators.at(chosenAlphaMoNIndex)->Estimate(pixelWindow, rgb, weightSum, splatRGB);
 
     // compute errors from RGB values
     // for (int i = 0; i < (n / 2); i++){

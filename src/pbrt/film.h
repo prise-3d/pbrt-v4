@@ -254,7 +254,7 @@ class RGBFilm : public FilmBase {
         Float weightSum = 0.;
 
         // Get Pixel directly inside estimator: const PixelWindow &pixelWindow = pixels[p];
-        estimator->Estimate(p, rgb, weightSum, splatRGB);
+        estimator->GetEstimation(p, rgb, weightSum, splatRGB);
         
         if (weightSum != 0)
             rgb /= weightSum;
