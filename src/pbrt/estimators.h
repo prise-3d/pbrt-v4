@@ -62,24 +62,42 @@ struct PixelWindow {
 };
 
 // Base Estimator class
+// Methods:
+// - Create: enable to create an instance of Estimator
+// - AddSample: add sample inside image buffer (with use of window)
+// - Estimate: estimate final pixel value using custom estimator
+// - AddSplat: add splat inside each pixel buffer
 class Estimator {
 
     public:
 
         ~Estimator() {};
         
-        static std::unique_ptr<Estimator> Create(const std::string &name); 
+        static std::unique_ptr<Estimator> Create(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc); 
 
         PBRT_CPU_GPU
-        virtual void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const = 0;
+        virtual void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const = 0;
+
+        PBRT_CPU_GPU
+        virtual void AddSample(const Point2i &pFilm, RGB &rgb, Float weight);
+
+        void AddSplat(const Point2i &p, Float &wt, RGB &rgb) {
+            PixelWindow &pixel = pixels[p];
+            for (int i = 0; i < 3; ++i)
+                pixel.buffers[pixel.index].splatRGB[i].Add(wt * rgb[i]); // add to current index
+        }
 
         std::string ToString() const;
 
     protected:
 
-        Estimator(const std::string &name) : name(name) {};
+        Estimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
+            : name(name), pixelBounds(pixelBounds), pixels(pixelBounds, alloc) {};
        
         std::string name;
+        Bounds2i pixelBounds;
+
+        Array2D<PixelWindow> pixels;
 };
 
 // Mean Estimator class
@@ -87,11 +105,11 @@ class MeanEstimator : public Estimator {
 
     public:
 
-        MeanEstimator(const std::string &name) : Estimator(name) {}; 
+        MeanEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
+            : Estimator(name, pixelBounds, alloc) {}; 
 
         PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
+        void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 };
 
 // MON Estimator class
@@ -100,10 +118,11 @@ class MONEstimator : public Estimator {
 
     public:
 
-        MONEstimator(const std::string &name) : Estimator(name) {}; 
+        MONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
+            : Estimator(name, pixelBounds, alloc) {};
 
         PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+        void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
 };
 
@@ -114,10 +133,11 @@ class AlphaMONEstimator : public Estimator {
 
     public:
 
-        AlphaMONEstimator(const std::string &name, Float alpha) : Estimator(name), alpha(alpha) {}; 
+        AlphaMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc, Float alpha) 
+            : Estimator(name, pixelBounds, alloc), alpha(alpha) {}; 
 
         PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+        void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         Float getAlpha() {
             return alpha;
@@ -138,23 +158,25 @@ class AutoAlphaMONEstimator : public Estimator {
 
     public:
 
-        AutoAlphaMONEstimator(const std::string &name, unsigned n) : Estimator(name), n(n) {
-            meanEstimator = std::make_unique<MeanEstimator>("mean");
-            monEstimator = std::make_unique<MONEstimator>("mon");
+        AutoAlphaMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc, unsigned n) 
+            : Estimator(name, pixelBounds, alloc), n(n) {
+
+            meanEstimator = std::make_unique<MeanEstimator>("mean", pixelBounds, alloc);
+            monEstimator = std::make_unique<MONEstimator>("mon", pixelBounds, alloc);
 
             for (int i = 0; i < n + 1; i++) {
 
                 // determine alpha parameter based
                 Float alpha = (1.0 / Float(n)) * (i);
 
-                std::unique_ptr<AlphaMONEstimator> amonSpecific = std::make_unique<AlphaMONEstimator>("amon", alpha);
+                std::unique_ptr<AlphaMONEstimator> amonSpecific = std::make_unique<AlphaMONEstimator>("amon", pixelBounds, alloc, alpha);
 
                 alphaMonEstimators.push_back(std::move(amonSpecific)); 
             }
         }; 
 
         PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+        void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
     private:
         unsigned n; // number of step when searching optimal alpha value
@@ -169,10 +191,10 @@ class PakMONEstimator : public Estimator {
 
     public:
 
-        PakMONEstimator(const std::string &name) : Estimator(name) {}; 
+        PakMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) : Estimator(name, pixelBounds, alloc) {}; 
 
         PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+        void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
     private:
         PBRT_CPU_GPU
@@ -187,13 +209,13 @@ class MeanOrMONEstimator : public Estimator {
 
     public:
 
-        MeanOrMONEstimator(const std::string &name) : Estimator(name) {
-            meanEstimator = std::make_unique<MeanEstimator>("mean");
-            monEstimator = std::make_unique<MONEstimator>("mon");
+        MeanOrMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) : Estimator(name, pixelBounds, alloc) { 
+            meanEstimator = std::make_unique<MeanEstimator>("mean", pixelBounds, alloc);
+            monEstimator = std::make_unique<MONEstimator>("mon", pixelBounds, alloc);
         }; 
 
         PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+        void Estimate(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
     private:
         std::unique_ptr<MeanEstimator> meanEstimator;

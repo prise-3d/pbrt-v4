@@ -472,7 +472,6 @@ STAT_MEMORY_COUNTER("Memory/Film pixels", filmPixelMemory);
 RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
                  Float maxComponentValue, bool writeFP16, Allocator alloc)
     : FilmBase(p),
-      pixels(p.pixelBounds, alloc),
       colorSpace(colorSpace),
       maxComponentValue(maxComponentValue),
       writeFP16(writeFP16) {
@@ -487,7 +486,7 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
     //     }
     // }); 
 
-    estimator = Estimator::Create(Options->estimator);
+    estimator = Estimator::Create(Options->estimator, pixelBounds, alloc);
 
     filmPixelMemory += pixelBounds.Area() * sizeof(PixelWindow);
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
@@ -516,9 +515,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
         // Evaluate filter at _pi_ and add splat contribution
         Float wt = filter.Evaluate(Point2f(p - pi - Vector2f(0.5, 0.5)));
         if (wt != 0) {
-            PixelWindow &pixel = pixels[pi];
-            for (int i = 0; i < 3; ++i)
-                pixel.buffers[pixel.index].splatRGB[i].Add(wt * rgb[i]); // add to current index
+            estimator->AddSplat(pi, wt, rgb);
         }
     }
 }

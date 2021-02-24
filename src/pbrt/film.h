@@ -245,8 +245,6 @@ class RGBFilm : public FilmBase {
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const {
 
         // P3D Updates
-        const PixelWindow &pixelWindow = pixels[p];
-        // update estimated value for rgbSum and weightSum
 
         //RGB rgb(pixel.rgbSum[0], pixel.rgbSum[1], pixel.rgbSum[2]);
         // Normalize _rgb_ with weight sum
@@ -255,7 +253,8 @@ class RGBFilm : public FilmBase {
         RGB rgb(0, 0, 0);
         Float weightSum = 0.;
 
-        estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
+        // Get Pixel directly inside estimator: const PixelWindow &pixelWindow = pixels[p];
+        estimator->Estimate(p, rgb, weightSum, splatRGB);
         
         if (weightSum != 0)
             rgb /= weightSum;
@@ -285,25 +284,9 @@ class RGBFilm : public FilmBase {
 
         DCHECK(InsideExclusive(pFilm, pixelBounds));
 
-        // Update pixel values with filtered sample contribution
-        PixelWindow &pixelWindow = pixels[pFilm];
-        
-        // add sample value inside current package
-        pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-        // add of squared sum of new pixel value
-        pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-        pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-        pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-        pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-        pixelWindow.index += 1;
-
-        if (pixelWindow.index >= pixelWindow.windowSize)
-            pixelWindow.index = 0;
+        // Add sample directly inside estimator
+        // Now estimator manage each added sample
+        estimator->AddSample(pFilm, rgb, weight);
     }
 
     PBRT_CPU_GPU
@@ -349,7 +332,6 @@ class RGBFilm : public FilmBase {
     bool writeFP16;
     Float filterIntegral;
     SquareMatrix<3> outputRGBFromSensorRGB;
-    Array2D<PixelWindow> pixels;
     std::unique_ptr<Estimator> estimator;
 };
 
