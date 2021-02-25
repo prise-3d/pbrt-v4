@@ -54,6 +54,29 @@ void Estimator::GetEstimation(const Point2i &pFilm, RGB &rgb, Float &weightSum, 
     Estimate(pixelWindow, rgb, weightSum, splatRGB);
 }
 
+void Estimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
+
+    // Update pixel values with filtered sample contribution
+    PixelWindow &pixelWindow = pixels[pFilm];
+    
+    // add sample value inside current package
+    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
+    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
+    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
+
+    // add of squared sum of new pixel value
+    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
+    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
+    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
+
+    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
+
+    pixelWindow.index += 1;
+
+    if (pixelWindow.index >= pixelWindow.windowSize)
+        pixelWindow.index = 0;
+}
+
 std::string Estimator::ToString() const {
     return name + "Estimator";
 }
@@ -80,29 +103,6 @@ void MeanEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
         }
     }
 };
-
-void MeanEstimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-
-    // Update pixel values with filtered sample contribution
-    PixelWindow &pixelWindow = pixels[pFilm];
-    
-    // add sample value inside current package
-    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-    // add of squared sum of new pixel value
-    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-    pixelWindow.index += 1;
-
-    if (pixelWindow.index >= pixelWindow.windowSize)
-        pixelWindow.index = 0;
-}
 
 void MONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
@@ -159,29 +159,6 @@ void MONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &wei
     // divide per number of channel the weightSum
     weightSum /= 3;
 };
-
-void MONEstimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-
-    // Update pixel values with filtered sample contribution
-    PixelWindow &pixelWindow = pixels[pFilm];
-    
-    // add sample value inside current package
-    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-    // add of squared sum of new pixel value
-    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-    pixelWindow.index += 1;
-
-    if (pixelWindow.index >= pixelWindow.windowSize)
-        pixelWindow.index = 0;
-}
 
 void PakMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
@@ -312,29 +289,6 @@ void PakMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &
     // divide per number of channel the weightSum
     weightSum /= 3;
 };
-
-void PakMONEstimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-
-    // Update pixel values with filtered sample contribution
-    PixelWindow &pixelWindow = pixels[pFilm];
-    
-    // add sample value inside current package
-    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-    // add of squared sum of new pixel value
-    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-    pixelWindow.index += 1;
-
-    if (pixelWindow.index >= pixelWindow.windowSize)
-        pixelWindow.index = 0;
-}
 
 
 Float PakMONEstimator::getEntropy(pstd::vector<Float> values) const {
@@ -470,29 +424,6 @@ void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float
     weightSum /= 3;
 };
 
-void AlphaMONEstimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-
-    // Update pixel values with filtered sample contribution
-    PixelWindow &pixelWindow = pixels[pFilm];
-    
-    // add sample value inside current package
-    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-    // add of squared sum of new pixel value
-    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-    pixelWindow.index += 1;
-
-    if (pixelWindow.index >= pixelWindow.windowSize)
-        pixelWindow.index = 0;
-}
-
 void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
     // Check use of mon or use of mean based on IC
@@ -590,29 +521,6 @@ void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Floa
         monEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
     }
 };
-
-void MeanOrMONEstimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-
-    // Update pixel values with filtered sample contribution
-    PixelWindow &pixelWindow = pixels[pFilm];
-    
-    // add sample value inside current package
-    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-    // add of squared sum of new pixel value
-    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-    pixelWindow.index += 1;
-
-    if (pixelWindow.index >= pixelWindow.windowSize)
-        pixelWindow.index = 0;
-}
 
 void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
@@ -749,27 +657,5 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
     // }
 };
 
-void AutoAlphaMONEstimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-
-    // Update pixel values with filtered sample contribution
-    PixelWindow &pixelWindow = pixels[pFilm];
-    
-    // add sample value inside current package
-    pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-    pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-    // add of squared sum of new pixel value
-    pixelWindow.buffers[pixelWindow.index].squaredSum[0] += rgb[0] * rgb[0];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
-    pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
-
-    pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-
-    pixelWindow.index += 1;
-
-    if (pixelWindow.index >= pixelWindow.windowSize)
-        pixelWindow.index = 0;
-}
 
 }
