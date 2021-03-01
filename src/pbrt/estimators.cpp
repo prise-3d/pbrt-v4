@@ -19,42 +19,15 @@
 
 namespace pbrt {
 
-std::unique_ptr<Estimator> Estimator::Create(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) {
-
-    std::unique_ptr<Estimator> estimator;
-
-    // TODO: Later use of paramset maybe..
-    if (name == "mean")
-        estimator = std::make_unique<MeanEstimator>(name, pixelBounds, alloc);
-    else if (name == "mon")
-        estimator = std::make_unique<MONEstimator>(name, pixelBounds, alloc);
-    else if (name == "amon")
-        estimator = std::make_unique<AlphaMONEstimator>(name, pixelBounds, alloc, 0.5);
-    else if (name == "aamon")
-        estimator = std::make_unique<AutoAlphaMONEstimator>(name, pixelBounds, alloc, 20);
-    else if (name == "pakmon")
-        estimator = std::make_unique<PakMONEstimator>(name, pixelBounds, alloc);
-    else if (name == "mean_or_mon")
-        estimator = std::make_unique<MeanOrMONEstimator>(name, pixelBounds, alloc);
-    else {
-        printf("%s: estimator type unknown. Use of default: mean", name.c_str());
-        estimator = std::make_unique<MeanEstimator>(name, pixelBounds, alloc);
-    }
-
-    if (!estimator)
-        printf("%s: unable to create estimator.", name.c_str());
-
-    return estimator;
-}
-
-void Estimator::GetEstimation(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const {
+void EstimatorBase::GetEstimation(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const {
     
     const PixelWindow &pixelWindow = pixels[pFilm];
 
+    // Estimate only the expected current estimator with pixelWindow
     Estimate(pixelWindow, rgb, weightSum, splatRGB);
 }
 
-void Estimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
+void EstimatorBase::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
 
     // Update pixel values with filtered sample contribution
     PixelWindow &pixelWindow = pixels[pFilm];
@@ -77,7 +50,7 @@ void Estimator::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
         pixelWindow.index = 0;
 }
 
-std::string Estimator::ToString() const {
+std::string EstimatorBase::ToString() const {
     return name + "Estimator";
 }
 
@@ -657,5 +630,32 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
     // }
 };
 
+EstimatorHandle EstimatorHandle::Create(const std::string &name, 
+                                        Bounds2i &pixelBounds, 
+                                        Allocator &alloc) {
+    EstimatorHandle estimator;
+
+    if (name == "mean")
+        estimator = alloc.new_object<MeanEstimator>(name, pixelBounds, alloc);
+    else if (name == "mon")
+        estimator = alloc.new_object<MONEstimator>(name, pixelBounds, alloc);
+    else if (name == "amon")
+        estimator = alloc.new_object<AlphaMONEstimator>(name, pixelBounds, alloc, 0.5);
+    else if (name == "aamon")
+        estimator = alloc.new_object<AutoAlphaMONEstimator>(name, pixelBounds, alloc, 20);
+    else if (name == "pakmon")
+        estimator = alloc.new_object<PakMONEstimator>(name, pixelBounds, alloc);
+    else if (name == "mean_or_mon")
+        estimator = alloc.new_object<MeanOrMONEstimator>(name, pixelBounds, alloc);
+    else {
+        printf("%s: estimator type unknown. Use of default: mean", name.c_str());
+        estimator = alloc.new_object<MeanEstimator>(name, pixelBounds, alloc);
+    }
+
+    if (!estimator)
+        printf("%s: unable to create estimator.", name.c_str());
+
+    return estimator;
+};
 
 }

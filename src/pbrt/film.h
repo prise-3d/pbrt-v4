@@ -254,7 +254,7 @@ class RGBFilm : public FilmBase {
         Float weightSum = 0.;
 
         // Get Pixel directly inside estimator: const PixelWindow &pixelWindow = pixels[p];
-        estimator->GetEstimation(p, rgb, weightSum, splatRGB);
+        estimator.GetEstimation(p, rgb, weightSum, splatRGB);
         
         if (weightSum != 0)
             rgb /= weightSum;
@@ -286,7 +286,7 @@ class RGBFilm : public FilmBase {
 
         // Add sample directly inside estimator
         // Now estimator manage each added sample
-        estimator->AddSample(pFilm, rgb, weight);
+        estimator.AddSample(pFilm, rgb, weight);
     }
 
     PBRT_CPU_GPU
@@ -332,7 +332,7 @@ class RGBFilm : public FilmBase {
     bool writeFP16;
     Float filterIntegral;
     SquareMatrix<3> outputRGBFromSensorRGB;
-    std::unique_ptr<Estimator> estimator;
+    EstimatorHandle estimator;
 };
 
 // GBufferFilm Definition

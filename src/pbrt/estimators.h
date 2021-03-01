@@ -19,7 +19,7 @@
 
 #include <pbrt/base/bxdf.h>
 #include <pbrt/base/camera.h>
-#include <pbrt/estimators.h>
+#include <pbrt/base/estimators.h>
 #include <pbrt/bsdf.h>
 #include <pbrt/util/colorspace.h>
 #include <pbrt/util/parallel.h>
@@ -27,7 +27,6 @@
 #include <pbrt/util/spectrum.h>
 #include <pbrt/util/transform.h>
 
-#include <atomic>
 #include <string>
 #include <vector>
 #include <math.h>
@@ -61,21 +60,25 @@ struct PixelWindow {
     bool filled = false;
 };
 
-// Base Estimator class
+// Base EstimatorBase class
 // Methods:
-// - Create: enable to create an instance of Estimator
-// - AddSample: add sample inside image buffer (with use of window)
+// - Create: enable to create an based instance of Estimator
+// - AddSample: add sample inside image buffer (with use of window). Seem the need to be fully virtual in order to work well GPU side.
 // - GetEstimation: return estimation of current estimate inside RGBFilm
 // - Estimate: estimate final pixel value using custom estimator
 // - AddSplat: add splat inside each pixel buffer (call in RGBFilm)
-class Estimator {
+class EstimatorBase {
 
     public:
 
-        ~Estimator() {};
-        
-        static std::unique_ptr<Estimator> Create(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc); 
+         EstimatorBase(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
+            : name(name), pixelBounds(pixelBounds), pixels(pixelBounds, alloc) {};
 
+        // Empty constructor to avoid use of PixelWindow grid when using only estimation
+        EstimatorBase(const std::string &name) : name(name) {};
+       
+        ~EstimatorBase() {};
+        
         PBRT_CPU_GPU
         void GetEstimation(const Point2i &pFilm, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
@@ -83,7 +86,7 @@ class Estimator {
         virtual void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const = 0;
 
         PBRT_CPU_GPU
-        virtual void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) = 0;
+        virtual void AddSample(const Point2i &pFilm, RGB &rgb, Float weight);
 
         void AddSplat(const Point2i &p, Float &wt, RGB &rgb) {
             PixelWindow &pixel = pixels[p];
@@ -95,56 +98,50 @@ class Estimator {
 
     protected:
 
-        Estimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
-            : name(name), pixelBounds(pixelBounds), pixels(pixelBounds, alloc) {};
-
-        // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        Estimator(const std::string &name) : name(name) {};
-       
+        // EstimatorBase Protected Members
         std::string name;
         Bounds2i pixelBounds;
-
         Array2D<PixelWindow> pixels;
 };
 
 // Mean Estimator class
-class MeanEstimator : public Estimator {
+class MeanEstimator : public EstimatorBase {
 
     public:
 
         MeanEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
-            : Estimator(name, pixelBounds, alloc) {}; 
+            : EstimatorBase(name, pixelBounds, alloc) {}; 
 
         // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        MeanEstimator(const std::string &name) : Estimator(name) {}; 
+        MeanEstimator(const std::string &name) : EstimatorBase(name) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         PBRT_CPU_GPU
         void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-            Estimator::AddSample(pFilm, rgb, weight);
+            EstimatorBase::AddSample(pFilm, rgb, weight);
         };
 };
 
 // MON Estimator class
 // Median of meaNs: use of median value from available mean buffers
-class MONEstimator : public Estimator {
+class MONEstimator : public EstimatorBase {
 
     public:
 
         MONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) 
-            : Estimator(name, pixelBounds, alloc) {};
+            : EstimatorBase(name, pixelBounds, alloc) {};
 
         // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        MONEstimator(const std::string &name) : Estimator(name) {}; 
+        MONEstimator(const std::string &name) : EstimatorBase(name) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         PBRT_CPU_GPU
         void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-            Estimator::AddSample(pFilm, rgb, weight);
+            EstimatorBase::AddSample(pFilm, rgb, weight);
         };
 
 };
@@ -152,23 +149,23 @@ class MONEstimator : public Estimator {
 // AlphaMON Estimator class
 // Median of meaNs: use of median value from available mean buffers
 // use of an alpha criterion for convergence
-class AlphaMONEstimator : public Estimator {
+class AlphaMONEstimator : public EstimatorBase {
 
     public:
 
         AlphaMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc, Float alpha) 
-            : Estimator(name, pixelBounds, alloc), alpha(alpha) {}; 
+            : EstimatorBase(name, pixelBounds, alloc), alpha(alpha) {}; 
 
 
         // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        AlphaMONEstimator(const std::string &name, Float alpha) : Estimator(name), alpha(alpha) {}; 
+        AlphaMONEstimator(const std::string &name, Float alpha) : EstimatorBase(name), alpha(alpha) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         PBRT_CPU_GPU
         void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-            Estimator::AddSample(pFilm, rgb, weight);
+            EstimatorBase::AddSample(pFilm, rgb, weight);
         };
 
         Float getAlpha() {
@@ -186,62 +183,62 @@ class AlphaMONEstimator : public Estimator {
 // AlphaMON Estimator class
 // Median of meaNs: use of median value from available mean buffers
 // use of an alpha criterion for convergence
-class AutoAlphaMONEstimator : public Estimator {
+class AutoAlphaMONEstimator : public EstimatorBase {
 
     public:
 
         AutoAlphaMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc, unsigned n) 
-            : Estimator(name, pixelBounds, alloc), n(n) {
+            : EstimatorBase(name, pixelBounds, alloc), n(n) {
 
-            meanEstimator = std::make_unique<MeanEstimator>("mean");
-            monEstimator = std::make_unique<MONEstimator>("mon");
+            meanEstimator = alloc.new_object<MeanEstimator>("mean");
+            monEstimator = alloc.new_object<MONEstimator>("mon");
 
             for (int i = 0; i < n + 1; i++) {
 
                 // determine alpha parameter based
                 Float alpha = (1.0 / Float(n)) * (i);
 
-                std::unique_ptr<AlphaMONEstimator> amonSpecific = std::make_unique<AlphaMONEstimator>("amon", alpha);
+                AlphaMONEstimator* amonSpecific = alloc.new_object<AlphaMONEstimator>("amon", alpha);
 
                 alphaMonEstimators.push_back(std::move(amonSpecific)); 
             }
         }; 
 
         // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        AutoAlphaMONEstimator(const std::string &name, unsigned n) : Estimator(name), n(n) {}; 
+        AutoAlphaMONEstimator(const std::string &name, unsigned n) : EstimatorBase(name), n(n) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         PBRT_CPU_GPU
         void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-            Estimator::AddSample(pFilm, rgb, weight);
+            EstimatorBase::AddSample(pFilm, rgb, weight);
         };
 
     private:
         unsigned n; // number of step when searching optimal alpha value
-        std::vector<std::unique_ptr<AlphaMONEstimator>> alphaMonEstimators;
-        std::unique_ptr<MeanEstimator> meanEstimator;
-        std::unique_ptr<MONEstimator> monEstimator;
+        std::vector<AlphaMONEstimator*> alphaMonEstimators;
+        MeanEstimator* meanEstimator;
+        MONEstimator* monEstimator;
 };
 
 // PakMON Estimation class
 // Based of MON Estimator but with confidence criteria of median's neighborhood buffers
-class PakMONEstimator : public Estimator {
+class PakMONEstimator : public EstimatorBase {
 
     public:
 
-        PakMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) : Estimator(name, pixelBounds, alloc) {}; 
+        PakMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) : EstimatorBase(name, pixelBounds, alloc) {}; 
 
         // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        PakMONEstimator(const std::string &name) : Estimator(name) {};
+        PakMONEstimator(const std::string &name) : EstimatorBase(name) {};
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         PBRT_CPU_GPU
         void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-            Estimator::AddSample(pFilm, rgb, weight);
+            EstimatorBase::AddSample(pFilm, rgb, weight);
         };
 
     private:
@@ -253,30 +250,59 @@ class PakMONEstimator : public Estimator {
 // Mean or MON estimator
 // Based on Confidence Interval criteria of pixel
 // Final estimator is chosen (mean or MON)
-class MeanOrMONEstimator : public Estimator {
+class MeanOrMONEstimator : public EstimatorBase {
 
     public:
 
-        MeanOrMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) : Estimator(name, pixelBounds, alloc) { 
-            meanEstimator = std::make_unique<MeanEstimator>("mean");
-            monEstimator = std::make_unique<MONEstimator>("mon");
+        MeanOrMONEstimator(const std::string &name, Bounds2i &pixelBounds, Allocator &alloc) : EstimatorBase(name, pixelBounds, alloc) { 
+            meanEstimator = alloc.new_object<MeanEstimator>("mean");
+            monEstimator = alloc.new_object<MONEstimator>("mon");
         }; 
 
         // Empty constructor to avoid use of PixelWindow grid when using only estimation
-        MeanOrMONEstimator(const std::string &name) : Estimator(name) {};
+        MeanOrMONEstimator(const std::string &name) : EstimatorBase(name) {};
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixel, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
         PBRT_CPU_GPU
         void AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
-            Estimator::AddSample(pFilm, rgb, weight);
+            EstimatorBase::AddSample(pFilm, rgb, weight);
         };
 
     private:
-        std::unique_ptr<MeanEstimator> meanEstimator;
-        std::unique_ptr<MONEstimator> monEstimator;
+        MeanEstimator* meanEstimator;
+        MONEstimator* monEstimator;
 };
+
+
+PBRT_CPU_GPU
+inline void EstimatorHandle::GetEstimation(const Point2i &pFilm, RGB &rgb, 
+                                        Float &weightSum, 
+                                        AtomicDouble* splatRGB) const {
+    auto ge = [&](auto ptr) { return ptr->GetEstimation(pFilm, rgb, weightSum, splatRGB); };
+    return Dispatch(ge);
+}
+
+PBRT_CPU_GPU
+inline void EstimatorHandle::Estimate(const PixelWindow &pixelWindow, RGB &rgb, 
+                                        Float &weightSum, 
+                                        AtomicDouble* splatRGB) const {
+    auto e = [&](auto ptr) { return ptr->Estimate(pixelWindow, rgb, weightSum, splatRGB); };
+    return Dispatch(e);
+}
+
+PBRT_CPU_GPU
+inline void EstimatorHandle::AddSample(const Point2i &pFilm, RGB &rgb, Float weight) {
+    auto sample = [&](auto ptr) { return ptr->AddSample(pFilm, rgb, weight); };
+    return Dispatch(sample);
+}
+
+PBRT_CPU_GPU
+inline void EstimatorHandle::AddSplat(const Point2i &p, Float &wt, RGB &rgb) {
+    auto splat = [&](auto ptr) { return ptr->AddSplat(p, wt, rgb); };
+    return Dispatch(splat);
+}
 
 }  // namespace pbrt
 
