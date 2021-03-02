@@ -37,7 +37,6 @@ Extended command line parameter:
 
 **Note:** current version enable the use `MoN` (Median of meaNs) estimator as output:
 - `nbuffers:` set the number of buffers (M-estimators) to use. It is a constant value in order to work on GPU. Value can be update and available at the top of the `src/pbrt/estimators.h` file (default 11). You need to compile again the pbrt version. A value of `1`, is equivalent to classical mean estimator ;
-- `PakMoN:` is also enable on GPU using the `nbuffers` parameter value.
   
 __TODO:__
 - `--independent`: {bool} -- adapt to GPU ; 
@@ -54,6 +53,7 @@ Camera "stereoscopic" "float fov" 50
 #        "string view" "left" 
        "float eyeDistance" [0.065]  
 
+```
 
 **Note:** it is necessary to generate the right and left images separately.
 
