@@ -139,18 +139,19 @@ class AutoAlphaMONEstimator : public Estimator {
     public:
 
         AutoAlphaMONEstimator(const std::string &name, unsigned n) : Estimator(name), n(n) {
-            meanEstimator = std::make_unique<MeanEstimator>("mean");
-            monEstimator = std::make_unique<MONEstimator>("mon");
+            // meanEstimator = std::make_unique<MeanEstimator>("mean");
+            // monEstimator = std::make_unique<MONEstimator>("mon");
 
-            for (int i = 0; i < n + 1; i++) {
+            // for (int i = 0; i < n + 1; i++) {
 
-                // determine alpha parameter based
-                Float alpha = (1.0 / Float(n)) * (i);
+            //     // determine alpha parameter based
+            //     Float alpha = (1.0 / Float(n)) * (i);
 
-                std::unique_ptr<AlphaMONEstimator> amonSpecific = std::make_unique<AlphaMONEstimator>("amon", alpha);
+            // default alpha value
+            alphaMoNEstimator = std::make_unique<AlphaMONEstimator>("amon", 0.);
 
-                alphaMonEstimators.push_back(std::move(amonSpecific)); 
-            }
+            //     alphaMonEstimators.push_back(std::move(amonSpecific)); 
+            // }
         }; 
 
         PBRT_CPU_GPU
@@ -158,9 +159,12 @@ class AutoAlphaMONEstimator : public Estimator {
 
     private:
         unsigned n; // number of step when searching optimal alpha value
-        std::vector<std::unique_ptr<AlphaMONEstimator>> alphaMonEstimators;
-        std::unique_ptr<MeanEstimator> meanEstimator;
-        std::unique_ptr<MONEstimator> monEstimator;
+        std::unique_ptr<AlphaMONEstimator> alphaMoNEstimator;
+        // std::unique_ptr<MeanEstimator> meanEstimator;
+        // std::unique_ptr<MONEstimator> monEstimator;
+
+        PBRT_CPU_GPU
+        Float getEntropy(pstd::vector<Float> values) const;
 };
 
 // PakMON Estimation class
