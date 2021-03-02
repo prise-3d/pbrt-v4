@@ -612,7 +612,7 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
     Float entropyMean = entropySum / 3.;
 
     // Set entropy and predict output
-    alphaMoNEstimator->setAlpha(entropyMean);
+    alphaMoNEstimator->setAlpha(1. - entropyMean);
     alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
 
     // std::cout << "Chosen alpha value is: " << alpha << std::endl;
