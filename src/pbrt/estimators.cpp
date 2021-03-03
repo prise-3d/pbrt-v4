@@ -302,6 +302,11 @@ Float PakMONEstimator::getEntropy(pstd::vector<Float> values) const {
 
 void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
+   this->Estimate(pixelWindow, rgb, weightSum, splatRGB, confidence);
+};
+
+void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const
+{
     weightSum = 0.;
 
     // based on channel numbers
@@ -395,7 +400,6 @@ void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float
     // divide per number of channel the weightSum
     weightSum /= 3;
 };
-
 
 void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
@@ -532,6 +536,37 @@ Float AutoAlphaMONEstimator::getEntropy(pstd::vector<Float> values) const {
     return entropy;
 };
 
+Float AutoAlphaMONEstimator::getGini(pstd::vector<Float> values) const {
+
+    // get indices of array
+    int n = values.size();
+    Float arraySum = 0;
+    Float indexArraySum = 0;
+
+    Float minValue = Infinity;
+
+    // get min value
+    for (int i = 0; i < n; i++)
+        if (values[i] < minValue)
+            minValue = values[i];
+
+    // need to sort obtained values
+    std::sort(values.begin(), values.end());
+
+    // avoid 0 value and store index
+    for (int i = 0; i < n; i++) {
+
+        if (minValue < 0)
+            values[i] -= minValue; 
+
+        values[i] += minValue + 0.00000000001; // epsilon value
+        arraySum += values[i];
+        indexArraySum += (2 * (i + 1) - n - 1) * values[i];
+    }
+
+    return indexArraySum / (n * arraySum);
+}
+
 void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
 
@@ -596,7 +631,7 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
     // }
 
     // for each channel number
-    Float entropySum = 0;
+    Float giniSum = 0;
 
     for (int i = 0; i < 3; i++) {
 
@@ -606,14 +641,13 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
             cvalues.push_back(pixelWindow.buffers[j].rgbSum[i] / pixelWindow.buffers[j].weightSum);
         }
 
-        entropySum += this->getEntropy(cvalues);
+        giniSum += this->getGini(cvalues);
     }
 
-    Float entropyMean = entropySum / 3.;
+    Float giniMean = giniSum / 3.;
 
-    // Set entropy and predict output
-    alphaMoNEstimator->setAlpha(1. - entropyMean);
-    alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
+    // Set gini value and predict output
+    alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1. - giniMean);
 
     // std::cout << "Chosen alpha value is: " << alpha << std::endl;
 

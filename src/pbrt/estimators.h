@@ -114,21 +114,24 @@ class AlphaMONEstimator : public Estimator {
 
     public:
 
-        AlphaMONEstimator(const std::string &name, Float alpha) : Estimator(name), alpha(alpha) {}; 
+        AlphaMONEstimator(const std::string &name, Float alpha) : Estimator(name), confidence(alpha) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
+
         Float getAlpha() {
-            return alpha;
+            return confidence;
         };
 
         void setAlpha(Float alpha) {
-            this->alpha = alpha;
+            this->confidence = alpha;
         };
 
     private:
-        Float alpha; // confidence criterion in [0, 1]
+        Float confidence; // confidence criterion in [0, 1]
 };
 
 // AlphaMON Estimator class
@@ -165,6 +168,9 @@ class AutoAlphaMONEstimator : public Estimator {
 
         PBRT_CPU_GPU
         Float getEntropy(pstd::vector<Float> values) const;
+
+        PBRT_CPU_GPU
+        Float getGini(pstd::vector<Float> values) const;
 };
 
 // PakMON Estimation class
