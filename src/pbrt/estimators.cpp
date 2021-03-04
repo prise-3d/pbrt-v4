@@ -556,10 +556,11 @@ Float AutoAlphaMONEstimator::getGini(pstd::vector<Float> values) const {
     // avoid 0 value and store index
     for (int i = 0; i < n; i++) {
 
+        // avoid negative value
         if (minValue < 0)
             values[i] -= minValue; 
 
-        values[i] += minValue + 0.00000000001; // epsilon value
+        values[i] += 0.00000000001; // epsilon value
         arraySum += values[i];
         indexArraySum += (2 * (i + 1) - n - 1) * values[i];
     }
