@@ -628,7 +628,7 @@ void GPURender(ParsedScene &scene) {
         integrator->camera.InitMetadata(&metadata);
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
-        integrator->film.WriteImage(metadata);
+        integrator->film.WriteImage(metadata, 1., i);
     }
 }
 
