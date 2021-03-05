@@ -648,7 +648,10 @@ void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, F
     Float giniMean = giniSum / 3.;
 
     // Set gini value and predict output
-    alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1. - giniMean);
+    if (giniMean < 0.5)
+        alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1);
+    else
+        alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 0);
 
     // std::cout << "Chosen alpha value is: " << alpha << std::endl;
 
