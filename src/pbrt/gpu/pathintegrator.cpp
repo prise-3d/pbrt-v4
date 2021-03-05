@@ -630,7 +630,7 @@ void GPURender(ParsedScene &scene) {
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
         integrator->film.WriteImage(metadata, 1., i);
-        usleep(100000);
+        usleep(2000000);
     }
 }
 
