@@ -273,7 +273,8 @@ void ImageTileIntegrator::Render() {
         // use of random seed for each image generated
         // check if correct way to set new seed for the whole program
         // `seed` only available for [`RamdomSampler`, `StratifiedSampler`]
-        int seed = threadPixel.x + threadPixel.y + randomseed;
+        // int seed = threadPixel.x + threadPixel.y + randomseed;
+        int seed = threadPixel.x + threadPixel.y;
         samplerPrototype.setSeed(seed);
 
         std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
@@ -427,8 +428,8 @@ void ImageTileIntegrator::Render() {
 
             if (waveStart % *Options->pixelSamples == 0) {
                 
-                std::cout << std::endl;
-                std::cout << "Saving of image n° " + std::to_string(imageCounter + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+                // std::cout << std::endl;
+                // std::cout << "Saving of image n° " + std::to_string(imageCounter + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
                 ImageMetadata metadata; // by default empty metadata
                 camera.GetFilm().WriteImage(metadata, 1.0f / waveStart, imageCounter);

@@ -255,8 +255,13 @@ class RGBFilm : public FilmBase {
         RGB rgb(0, 0, 0);
         Float weightSum = 0.;
 
-        estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
-        
+        // study of 312, 271
+        if (p.x == 312 && p.y == 271) {
+            estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
+            // std::cout << rgb[0] << "," << rgb[1] << "," << rgb[2] << std::endl;
+        }
+
+
         if (weightSum != 0)
             rgb /= weightSum;
 
@@ -301,6 +306,19 @@ class RGBFilm : public FilmBase {
         pixelWindow.buffers[pixelWindow.index].weightSum += weight;
 
         pixelWindow.index += 1;
+
+        // study of fireflies
+        bool firefly = false;
+        Float maxFound = 0;
+        for (int c = 0; c < 3; ++c){
+            if (rgb[c] / weight > 1000) 
+                firefly = true;
+            if (rgb[c] / weight > maxFound)
+                maxFound = rgb[c] / weight;
+        }
+
+        // if (firefly)
+        //    std::cout << "Possible found firefly at: " << pFilm << " with max value of " << maxFound << std::endl;
 
         if (pixelWindow.index >= pixelWindow.windowSize)
             pixelWindow.index = 0;
