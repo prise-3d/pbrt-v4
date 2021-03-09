@@ -302,6 +302,11 @@ Float PakMONEstimator::getEntropy(pstd::vector<Float> values) const {
 
 void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
+   this->Estimate(pixelWindow, rgb, weightSum, splatRGB, confidence);
+};
+
+void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const
+{
     weightSum = 0.;
 
     // based on channel numbers
@@ -395,7 +400,6 @@ void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float
     // divide per number of channel the weightSum
     weightSum /= 3;
 };
-
 
 void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
@@ -496,73 +500,163 @@ void MeanOrMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Floa
 };
 
 
+Float AutoAlphaMONEstimator::getEntropy(pstd::vector<Float> values) const {
+
+    // computation of squared values
+    Float sumEigenValues = 0;
+    pstd::vector<Float> eigenValues(values.size());
+
+    for (int i = 0; i < values.size(); i++) {
+        Float sum = values[i] * values[i];
+        eigenValues[i] = sum;
+        sumEigenValues += sum;
+    }
+
+    // normalization the squared values
+    pstd::vector<Float> v(values.size());
+
+    for (int i = 0; i < values.size(); i++) {
+        // add of epsilon value
+        v[i] = eigenValues[i] / (sumEigenValues + 0.000000000001);
+    }
+
+    // computation of entropy
+    Float entropy = 0;
+
+    for (int i = 0; i < values.size(); i++) {
+        if (v[i] > 0) {
+            entropy += v[i] * log(v[i]);
+        }
+    }
+
+    entropy *= -1;
+
+    entropy /= log(values.size());
+
+    return entropy;
+};
+
+Float AutoAlphaMONEstimator::getGini(pstd::vector<Float> values) const {
+
+    // get indices of array
+    int n = values.size();
+    Float arraySum = 0;
+    Float indexArraySum = 0;
+
+    Float minValue = Infinity;
+
+    // get min value
+    for (int i = 0; i < n; i++)
+        if (values[i] < minValue)
+            minValue = values[i];
+
+    // need to sort obtained values
+    std::sort(values.begin(), values.end());
+
+    // avoid 0 value and store index
+    for (int i = 0; i < n; i++) {
+
+        // avoid negative value
+        if (minValue < 0)
+            values[i] -= minValue; 
+
+        values[i] += 0.00000000001; // epsilon value
+        arraySum += values[i];
+        indexArraySum += (2 * (i + 1) - n - 1) * values[i];
+    }
+
+    return indexArraySum / (n * arraySum);
+}
+
 void AutoAlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
 
-    RGB rgbMean;
-    Float weightMean;
-    AtomicDouble splatRGBMean[3];
+    // RGB rgbMean;
+    // Float weightMean;
+    // AtomicDouble splatRGBMean[3];
 
-    meanEstimator->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
+    // meanEstimator->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
 
-    RGB rgbMON;
-    Float weightMON;
-    AtomicDouble splatRGBMON[3];
+    // RGB rgbMON;
+    // Float weightMON;
+    // AtomicDouble splatRGBMON[3];
 
-    monEstimator->Estimate(pixelWindow, rgbMON, weightMON, splatRGBMON);
+    // monEstimator->Estimate(pixelWindow, rgbMON, weightMON, splatRGBMON);
 
-    pstd::vector<Float> squaredErrorMON;
-    pstd::vector<Float> squaredErrorMean;
+    // pstd::vector<Float> squaredErrorMON;
+    // pstd::vector<Float> squaredErrorMean;
 
-    Float squaredSumErrorMean = 0.;
+    // Float squaredSumErrorMean = 0.;
 
-    // std::cout << "===========================================" << std::endl;
-    // std::cout << "[";
-    for (int i = 0; i < n + 1; i++) {
+    // // std::cout << "===========================================" << std::endl;
+    // // std::cout << "[";
+    // for (int i = 0; i < n + 1; i++) {
 
-        RGB rgbCurrentMean;
-        Float weightCurrentMean;
-        AtomicDouble splatRGBCurrentMean[3];
+    //     RGB rgbCurrentMean;
+    //     Float weightCurrentMean;
+    //     AtomicDouble splatRGBCurrentMean[3];
 
-        alphaMonEstimators.at(i)->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
+    //     alphaMonEstimators.at(i)->Estimate(pixelWindow, rgbMean, weightMean, splatRGBMean);
 
-        Float currentLErrorMean = 0.;
+    //     Float currentLErrorMean = 0.;
 
-        // compute quadratic error of RGB values
-        for (int j = 0; j < 3; j++) {
-            currentLErrorMean += pow(rgbCurrentMean[i] - rgbMean[i], 2);
-        }
+    //     // compute quadratic error of RGB values
+    //     for (int j = 0; j < 3; j++) {
+    //         currentLErrorMean += pow(rgbCurrentMean[i] - rgbMean[i], 2);
+    //     }
 
-        squaredErrorMean.push_back(currentLErrorMean);
-        squaredSumErrorMean += currentLErrorMean;
+    //     squaredErrorMean.push_back(currentLErrorMean);
+    //     squaredSumErrorMean += currentLErrorMean;
 
-        // std::cout << currentLErrorMean;
+    //     // std::cout << currentLErrorMean;
 
-        // if (i != n){
-        //     std::cout << ",";
-        // }
-    }
+    //     // if (i != n){
+    //     //     std::cout << ",";
+    //     // }
+    // }
     // std::cout << "]" << std::endl;
 
-    Float meanError = squaredSumErrorMean / (n + 1);
-    // std::cout << "Mean error is: " << meanError << std::endl;
+    // Float meanError = squaredSumErrorMean / (n + 1);
+    // // std::cout << "Mean error is: " << meanError << std::endl;
 
-    Float alpha = 0.;
-    int chosenAlphaMoNIndex = 0;
-    for (int i = 0; i < n + 1; i++) { 
+    // Float alpha = 0.;
+    // int chosenAlphaMoNIndex = 0;
+    // for (int i = 0; i < n + 1; i++) { 
         
-        //std::cout << meanError << " vs " << squaredErrorMean[i] << std::endl;
-        if (squaredErrorMean[i] > meanError) {
-            alpha = (1.0 / Float(n)) * (i);
-            chosenAlphaMoNIndex = i;
-            break;
+    //     //std::cout << meanError << " vs " << squaredErrorMean[i] << std::endl;
+    //     if (squaredErrorMean[i] > meanError) {
+    //         alpha = (1.0 / Float(n)) * (i);
+    //         chosenAlphaMoNIndex = i;
+    //         break;
+    //     }
+    // }
+
+    // for each channel number
+    Float giniSum = 0;
+
+    for (int i = 0; i < 3; i++) {
+
+        pstd::vector<Float> cvalues;
+
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            cvalues.push_back(pixelWindow.buffers[j].rgbSum[i] / pixelWindow.buffers[j].weightSum);
         }
+
+        giniSum += this->getGini(cvalues);
     }
+
+    Float giniMean = giniSum / 3.;
+
+    // Set gini value and predict output
+    if (giniMean < 0.5)
+        alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1);
+    else
+        alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 0);
 
     // std::cout << "Chosen alpha value is: " << alpha << std::endl;
 
     // use of Alpha Mon estimator with specific alpha value chosen
-    alphaMonEstimators.at(chosenAlphaMoNIndex)->Estimate(pixelWindow, rgb, weightSum, splatRGB);
+    // alphaMonEstimators.at(chosenAlphaMoNIndex)->Estimate(pixelWindow, rgb, weightSum, splatRGB);
 
     // compute errors from RGB values
     // for (int i = 0; i < (n / 2); i++){
