@@ -317,6 +317,11 @@ class RGBFilm : public FilmBase {
                 maxFound = rgb[c] / weight;
         }
 
+        if (pFilm.x == 312 && pFilm.y == 271) {
+            
+            std::cout << rgb[0] << "," << rgb[1] << "," << rgb[2] << std::endl;
+        }
+
         // if (firefly)
         //    std::cout << "Possible found firefly at: " << pFilm << " with max value of " << maxFound << std::endl;
 
