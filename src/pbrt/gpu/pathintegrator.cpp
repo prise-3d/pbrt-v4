@@ -2,6 +2,7 @@
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
+#include <unistd.h>
 #include <pbrt/gpu/pathintegrator.h>
 
 #include <pbrt/base/medium.h>
@@ -629,6 +630,7 @@ void GPURender(ParsedScene &scene) {
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
         integrator->film.WriteImage(metadata, 1., i);
+        usleep(1000000);
     }
 }
 
