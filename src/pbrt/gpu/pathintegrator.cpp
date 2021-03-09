@@ -600,12 +600,22 @@ void GPURender(ParsedScene &scene) {
     // Here add number of images to generate (use of --spp for sample per pixel)
     for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
-        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+        if (*Options->independent)
+            std::cout << "[Independent] Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+        else
+            std::cout << "[Dependent] Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
         uint64_t randomseed;
         randomseed = rand();
 
-        integrator->sampler.setSeed(randomseed);
+        // P3D : set seed only for the first image
+        if (!*Options->independent && i == *Options->startIndex)
+            integrator->sampler.setSeed(randomseed);
+
+        // P3D : always set seed when independent
+        if (*Options->independent)
+            integrator->sampler.setSeed(randomseed);
+
         ///////////////////////////////////////////////////////////////////////////
         // Render!
         Timer timer;
@@ -630,6 +640,12 @@ void GPURender(ParsedScene &scene) {
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
         integrator->film.WriteImage(metadata, 1., i);
+
+        // P3D : clear image when generated images are independent
+        if (*Options->independent)
+            integrator->film.Clear();
+
+        // P3D : sleep some time
         usleep(1000000);
     }
 }

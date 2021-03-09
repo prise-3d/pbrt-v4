@@ -47,6 +47,17 @@ struct PixelBuffer {
     double squaredSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
     double weightSum = 0.;
+
+    void Clear() {
+
+        for (int i = 0; i < 3; i++) {
+            rgbSum[i] = 0.;
+            squaredSum[i] = 0.;
+            splatRGB[i] = 0.;
+        }
+
+        weightSum = 0.;
+    }
 };
 
 // P3D Updates

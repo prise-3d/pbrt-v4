@@ -51,6 +51,10 @@ class FilmHandle : public TaggedPointer<RGBFilm, GBufferFilm> {
     PBRT_CPU_GPU
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const;
 
+    // P3D Updates clear the whole film (pixels grid)
+    PBRT_CPU_GPU
+    void Clear();
+
     PBRT_CPU_GPU inline FilterHandle GetFilter() const;
     PBRT_CPU_GPU inline const PixelSensor *GetPixelSensor() const;
     std::string GetFilename() const;
