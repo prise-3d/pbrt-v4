@@ -249,7 +249,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
 }
 
 // GPUPathIntegrator Method Definitions
-void GPUPathIntegrator::Render() {
+void GPUPathIntegrator::Render(int startSample, int endSample) {
     Vector2i resolution = film.PixelBounds().Diagonal();
     int spp = sampler.SamplesPerPixel();
     // Launch thread to copy image for display server, if enabled
@@ -320,7 +320,7 @@ void GPUPathIntegrator::Render() {
                        });
     }
 
-    int firstSampleIndex = 0, lastSampleIndex = spp;
+    int firstSampleIndex = startSample, lastSampleIndex = endSample;
     // Update sample index range based on debug start, if provided
     if (!Options->debugStart.empty()) {
         std::vector<int> values = SplitStringToInts(Options->debugStart, ',');
@@ -619,7 +619,14 @@ void GPURender(ParsedScene &scene) {
         ///////////////////////////////////////////////////////////////////////////
         // Render!
         Timer timer;
-        integrator->Render();
+
+        // P3D update depending of method
+        int spp = integrator->sampler.SamplesPerPixel();
+
+        if (*Options->independent)
+            integrator->Render(0, spp);
+        else
+            integrator->Render(i * spp, (i + 1) * spp);
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
 
