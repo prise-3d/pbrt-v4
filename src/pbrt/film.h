@@ -255,8 +255,8 @@ class RGBFilm : public FilmBase {
         RGB rgb(0, 0, 0);
         Float weightSum = 0.;
 
-        // study of 312, 271
-        if (p.x == 312 && p.y == 271) {
+        // study of 393, 373
+        if (p.x == 393 && p.y == 373) {
             estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
             // std::cout << rgb[0] << "," << rgb[1] << "," << rgb[2] << std::endl;
         }
@@ -317,9 +317,10 @@ class RGBFilm : public FilmBase {
                 maxFound = rgb[c] / weight;
         }
 
-        if (pFilm.x == 312 && pFilm.y == 271) {
+        // 257, 365
+        if (pFilm.x == 257 && pFilm.y == 365) {
             
-            std::cout << rgb[0] << "," << rgb[1] << "," << rgb[2] << std::endl;
+            std::cout << rgb[0] / weight << "," << rgb[1] / weight << "," << rgb[2] / weight << std::endl;
         }
 
         // if (firefly)

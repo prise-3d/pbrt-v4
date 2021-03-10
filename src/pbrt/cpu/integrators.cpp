@@ -86,15 +86,15 @@ void ImageTileIntegrator::Render() {
 
     if (*Options->independent) {
         
-        std::cout << "Independent generation of " << std::to_string(*Options->nimages) << " images" << std::endl;
+        // std::cout << "Independent generation of " << std::to_string(*Options->nimages) << " images" << std::endl;
         // P3D updates
         // Here add number of images to generate (use of --spp for sample per pixel)
         for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
-            std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+            // std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
-            uint64_t randomseed;
-            randomseed = rand();
+            // uint64_t randomseed;
+            // randomseed = rand();
 
             thread_local Point2i threadPixel;
             thread_local int threadSampleIndex;
@@ -115,7 +115,7 @@ void ImageTileIntegrator::Render() {
             // use of random seed for each image generated
             // check if correct way to set new seed for the whole program
             // `seed` only available for [`RamdomSampler`, `StratifiedSampler`]
-            int seed = threadPixel.x + threadPixel.y + randomseed;
+            int seed = threadPixel.x + threadPixel.y;
             samplerPrototype.setSeed(seed);
 
             std::vector<SamplerHandle> samplers = samplerPrototype.Clone(MaxThreadIndex());
