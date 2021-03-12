@@ -249,7 +249,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
 }
 
 // GPUPathIntegrator Method Definitions
-void GPUPathIntegrator::Render() {
+void GPUPathIntegrator::Render(int startSample, int endSample) {
     Vector2i resolution = film.PixelBounds().Diagonal();
     int spp = sampler.SamplesPerPixel();
     // Launch thread to copy image for display server, if enabled
@@ -320,7 +320,7 @@ void GPUPathIntegrator::Render() {
                        });
     }
 
-    int firstSampleIndex = 0, lastSampleIndex = spp;
+    int firstSampleIndex = startSample, lastSampleIndex = endSample;
     // Update sample index range based on debug start, if provided
     if (!Options->debugStart.empty()) {
         std::vector<int> values = SplitStringToInts(Options->debugStart, ',');
@@ -600,16 +600,33 @@ void GPURender(ParsedScene &scene) {
     // Here add number of images to generate (use of --spp for sample per pixel)
     for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
-        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+        if (*Options->independent)
+            std::cout << "[Independent] Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+        else
+            std::cout << "[Dependent] Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
         uint64_t randomseed;
         randomseed = rand();
 
-        integrator->sampler.setSeed(randomseed);
+        // P3D : set seed only for the first image
+        if (!*Options->independent && i == *Options->startIndex)
+            integrator->sampler.setSeed(randomseed);
+
+        // P3D : always set seed when independent
+        if (*Options->independent)
+            integrator->sampler.setSeed(randomseed);
+
         ///////////////////////////////////////////////////////////////////////////
         // Render!
         Timer timer;
-        integrator->Render();
+
+        // P3D update depending of method
+        int spp = integrator->sampler.SamplesPerPixel();
+
+        if (*Options->independent)
+            integrator->Render(0, spp);
+        else
+            integrator->Render(i * spp, (i + 1) * spp);
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
 
@@ -630,6 +647,12 @@ void GPURender(ParsedScene &scene) {
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
         integrator->film.WriteImage(metadata, 1., i);
+
+        // P3D : clear image when generated images are independent
+        if (*Options->independent)
+            integrator->film.Clear();
+
+        // P3D : sleep some time
         usleep(1000000);
     }
 }

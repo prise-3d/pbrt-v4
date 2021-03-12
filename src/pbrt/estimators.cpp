@@ -612,7 +612,7 @@ void GiniBinaryMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, 
 
     Float giniMean = giniSum / 3.;
 
-    if (giniMean < 0.5)
+    if (giniMean < 0.25)
         alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1.);
     else
         alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 0.);
@@ -637,7 +637,7 @@ void GiniPartialMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb,
 
     Float giniMean = giniSum / 3.;
 
-    if (giniMean < 0.5)
+    if (giniMean < 0.25)
         alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1.);
     else
         alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 0.5);

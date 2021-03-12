@@ -30,7 +30,7 @@ void GPURender(ParsedScene &scene);
 class GPUPathIntegrator {
   public:
     // GPUPathIntegrator Public Methods
-    void Render();
+    void Render(int startSample, int endSample);
 
     void GenerateCameraRays(int y0, int sampleIndex);
     template <typename Sampler>

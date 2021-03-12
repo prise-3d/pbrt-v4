@@ -240,7 +240,19 @@ class FilmBase {
 // RGBFilm Definition
 class RGBFilm : public FilmBase {
   public:
+
     // RGBFilm Public Methods
+    PBRT_CPU_GPU
+    void Clear() { 
+        
+        ParallelFor2D(pixelBounds, [&](Point2i p) {
+            for (int i = 0; i < pixels[p].windowSize; i++) {
+                pixels[p].buffers[i].Clear();
+                pixels[p].varianceEstimator = VarianceEstimator<Float>();
+            }
+        }); 
+    };
+
     PBRT_CPU_GPU
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const {
 
@@ -356,6 +368,10 @@ class RGBFilm : public FilmBase {
 // GBufferFilm Definition
 class GBufferFilm : public FilmBase {
   public:
+
+    PBRT_CPU_GPU
+    void Clear() {};
+        
     // GBufferFilm Public Methods
     GBufferFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
                 Float maxComponentValue = Infinity, bool writeFP16 = true,
@@ -451,6 +467,12 @@ PBRT_CPU_GPU
 inline Point2i FilmHandle::FullResolution() const {
     auto fr = [&](auto ptr) { return ptr->FullResolution(); };
     return Dispatch(fr);
+}
+
+PBRT_CPU_GPU
+inline void FilmHandle::Clear() {
+    auto cl = [&](auto ptr) { return ptr->Clear(); };
+    return Dispatch(cl);
 }
 
 PBRT_CPU_GPU
