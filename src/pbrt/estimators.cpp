@@ -362,7 +362,7 @@ void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float
 
         unsigned lowerIndex = 0;
         unsigned higherIndex = 0;
-        unsigned until = middleIndex;
+        unsigned until = int(alpha * middleIndex); // TODO check if correct way to get until
     
         // get current lower and higher index 
         if (nbuffers % 2 == 0) {
@@ -380,19 +380,19 @@ void AlphaMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float
         for (int j = 1; j < until + 1; j++) {
 
             // current neighbor multiple factor
-            Float multFactor = pow(alpha, j);
+            // Float multFactor = pow(alpha, j);
 
             // add left and right neighbor contribution
-            mean += means[lowerIndex - j] * multFactor;
-            mean += means[higherIndex + j] * multFactor;
+            mean += means[lowerIndex - j];
+            mean += means[higherIndex + j];
             
             // weighting contribution to take in account
             // use of this index to retrieve the associated weightsSum
-            weight += weightsSum[sortedIndices[lowerIndex]] * multFactor;
-            weight += weightsSum[sortedIndices[higherIndex]] * multFactor;
+            weight += weightsSum[sortedIndices[lowerIndex]];
+            weight += weightsSum[sortedIndices[higherIndex]];
 
-            csplat += csplats[sortedIndices[lowerIndex]] * multFactor;
-            csplat += csplats[sortedIndices[higherIndex]] * multFactor;
+            csplat += csplats[sortedIndices[lowerIndex]];
+            csplat += csplats[sortedIndices[higherIndex]];
         }
 
         // store channel information
@@ -637,10 +637,11 @@ void GiniPartialMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb,
 
     Float giniMean = giniSum / 3.;
 
+    // totally be confident with Mean, otherwise use of Gini indicator (check also 0.5)
     if (giniMean < 0.25)
         alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1.);
     else
-        alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 0.5);
+        alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1 - giniMean);
 };
 
 }
