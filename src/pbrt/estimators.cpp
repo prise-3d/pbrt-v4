@@ -590,7 +590,7 @@ void GiniMONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float 
 
     Float giniMean = giniSum / 3.;
 
-    alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, giniMean);
+    alphaMoNEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1 - giniMean);
 };
 
 
