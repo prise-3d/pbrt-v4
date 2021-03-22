@@ -33,17 +33,16 @@ class SphericalCamera;
 class RealisticCamera;
 
 // P3D Update
-// CameraHandle Definition
-class CameraHandle : public TaggedPointer<PerspectiveCamera, StereoscopicCamera, AutoStereoscopicCamera, OrthographicCamera,
+// Camera Definition
+class Camera : public TaggedPointer<PerspectiveCamera, StereoscopicCamera, AutoStereoscopicCamera, OrthographicCamera,
                                           SphericalCamera, RealisticCamera> {
   public:
     // Camera Interface
     using TaggedPointer::TaggedPointer;
 
-    static CameraHandle Create(const std::string &name,
-                               const ParameterDictionary &parameters, MediumHandle medium,
-                               const CameraTransform &cameraTransform, FilmHandle film,
-                               const FileLoc *loc, Allocator alloc);
+    static Camera Create(const std::string &name, const ParameterDictionary &parameters,
+                         Medium medium, const CameraTransform &cameraTransform, Film film,
+                         const FileLoc *loc, Allocator alloc);
 
     std::string ToString() const;
 
@@ -54,7 +53,7 @@ class CameraHandle : public TaggedPointer<PerspectiveCamera, StereoscopicCamera,
     pstd::optional<CameraRayDifferential> GenerateRayDifferential(
         CameraSample sample, SampledWavelengths &lambda) const;
 
-    PBRT_CPU_GPU inline FilmHandle GetFilm() const;
+    PBRT_CPU_GPU inline Film GetFilm() const;
 
     PBRT_CPU_GPU inline Float SampleTime(Float u) const;
 
