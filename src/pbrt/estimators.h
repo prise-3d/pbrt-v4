@@ -134,7 +134,56 @@ class AlphaMONEstimator : public Estimator {
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
 };
 
-// AlphaMON Estimator class
+// AlphaDistMON Estimator class
+// Median of meaNs: use of median value from available mean buffers
+// use of an alpha criterion for convergence using whole package
+class AlphaDistMONEstimator : public Estimator {
+
+    public:
+
+        AlphaDistMONEstimator(const std::string &name) : Estimator(name) {}; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
+};
+
+// GiniMON Estimator class
+// Median of meaNs: use of median value from available mean buffers
+// Use of Gini in order to well use \alpha criterion
+class GiniDistMONEstimator : public Estimator {
+
+    public:
+
+        GiniDistMONEstimator(const std::string &name) : Estimator(name) {
+
+            // default alpha value
+            alphaDistMoNEstimator = std::make_unique<AlphaDistMONEstimator>("admon");
+        }; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+    protected:
+        std::unique_ptr<AlphaDistMONEstimator> alphaDistMoNEstimator;
+
+        PBRT_CPU_GPU
+        Float getGini(pstd::vector<Float> values) const;
+};
+
+class GiniDistPartialMONEstimator : public GiniDistMONEstimator {
+
+    public:
+
+        GiniDistPartialMONEstimator(const std::string &name) : GiniDistMONEstimator(name) {};
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+};
+
+// GiniMON Estimator class
 // Median of meaNs: use of median value from available mean buffers
 // Use of Gini in order to well use \alpha criterion
 class GiniMONEstimator : public Estimator {
