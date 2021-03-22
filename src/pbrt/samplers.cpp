@@ -479,6 +479,8 @@ Sampler Sampler::Create(const std::string &name, const ParameterDictionary &para
         sampler = PMJ02BNSampler::Create(parameters, loc, alloc);
     else if (name == "independent")
         sampler = IndependentSampler::Create(parameters, loc, alloc);
+    else if (name == "random") // same as random (independent)
+        sampler = IndependentSampler::Create(parameters, loc, alloc);
     else if (name == "stratified")
         sampler = StratifiedSampler::Create(parameters, loc, alloc);
     else

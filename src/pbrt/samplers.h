@@ -465,8 +465,8 @@ class IndependentSampler {
 
     PBRT_CPU_GPU
     void StartPixelSample(const Point2i &p, int sampleIndex, int dimension) {
-        rng.SetSequence((p.x + p.y * 65536) | (uint64_t(seed) << 32));
-        rng.Advance(sampleIndex * 65536 + dimension);
+        rng.SetSequence((p.x + p.y * 65536 * 65536) | (uint64_t(seed) << 32));
+        rng.Advance(sampleIndex * 65536 * 65536 + dimension);
     }
 
     PBRT_CPU_GPU
