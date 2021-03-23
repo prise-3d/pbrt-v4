@@ -609,8 +609,8 @@ void GPURender(ParsedScene &scene) {
             integrator->sampler.setSeed(randomseed);
 
         // P3D : always set seed when independent
-        if (*Options->independent)
-            integrator->sampler.setSeed(randomseed);
+        //if (*Options->independent) // => try always set seed
+        integrator->sampler.setSeed(randomseed);
 
         ///////////////////////////////////////////////////////////////////////////
         // Render!
