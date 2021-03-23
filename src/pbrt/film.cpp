@@ -42,6 +42,7 @@ void Film::AddSplat(const Point2f &p, SampledSpectrum v,
 // P3D updates: use of image index to save image
 void Film::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imageIndex) {
     auto write = [&](auto ptr) { return ptr->WriteImage(metadata, splatScale, imageIndex); };
+    return DispatchCPU(write);
 }
 // void Film::WriteImage(ImageMetadata metadata, Float splatScale) {
 //     auto write = [&](auto ptr) { return ptr->WriteImage(metadata, splatScale); };
@@ -527,6 +528,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
 }
 
 void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imageIndex) {
+
     Image image = GetImage(&metadata, splatScale);
 
     // P3D : updates create new image with `spp` samples
@@ -552,7 +554,6 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imag
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);
     mkdir(folder_image.c_str(), 0775);
-
 
     LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
     image.Write(temp_filename, metadata);
