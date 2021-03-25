@@ -184,7 +184,7 @@ pstd::optional<TriangleIntersection> IntersectTriangle(const Ray &ray, Float tMa
     // Apply shear transformation to translated vertex positions
     Float Sx = -d.x / d.z;
     Float Sy = -d.y / d.z;
-    Float Sz = 1.f / d.z;
+    Float Sz = 1 / d.z;
     p0t.x += Sx * p0t.z;
     p0t.y += Sy * p0t.z;
     p1t.x += Sx * p1t.z;
@@ -259,8 +259,7 @@ pstd::optional<TriangleIntersection> IntersectTriangle(const Ray &ray, Float tMa
 }
 
 // Triangle Method Definitions
-pstd::vector<ShapeHandle> Triangle::CreateTriangles(const TriangleMesh *mesh,
-                                                    Allocator alloc) {
+pstd::vector<Shape> Triangle::CreateTriangles(const TriangleMesh *mesh, Allocator alloc) {
     static std::mutex allMeshesLock;
     allMeshesLock.lock();
     CHECK_LT(allMeshes->size(), 1 << 31);
@@ -268,7 +267,7 @@ pstd::vector<ShapeHandle> Triangle::CreateTriangles(const TriangleMesh *mesh,
     allMeshes->push_back(mesh);
     allMeshesLock.unlock();
 
-    pstd::vector<ShapeHandle> tris(mesh->nTriangles, alloc);
+    pstd::vector<Shape> tris(mesh->nTriangles, alloc);
     Triangle *t = alloc.allocate_object<Triangle>(mesh->nTriangles);
     for (int i = 0; i < mesh->nTriangles; ++i) {
         alloc.construct(&t[i], meshIndex, i);
@@ -482,17 +481,17 @@ std::string CurveCommon::ToString() const {
         reverseOrientation, transformSwapsHandedness);
 }
 
-pstd::vector<ShapeHandle> CreateCurve(const Transform *renderFromObject,
-                                      const Transform *objectFromRender,
-                                      bool reverseOrientation,
-                                      pstd::span<const Point3f> c, Float w0, Float w1,
-                                      CurveType type, pstd::span<const Normal3f> norm,
-                                      int splitDepth, Allocator alloc) {
+pstd::vector<Shape> CreateCurve(const Transform *renderFromObject,
+                                const Transform *objectFromRender,
+                                bool reverseOrientation, pstd::span<const Point3f> c,
+                                Float w0, Float w1, CurveType type,
+                                pstd::span<const Normal3f> norm, int splitDepth,
+                                Allocator alloc) {
     CurveCommon *common = alloc.new_object<CurveCommon>(
         c, w0, w1, type, norm, renderFromObject, objectFromRender, reverseOrientation);
 
     const int nSegments = 1 << splitDepth;
-    pstd::vector<ShapeHandle> segments(nSegments, alloc);
+    pstd::vector<Shape> segments(nSegments, alloc);
     Curve *curves = alloc.allocate_object<Curve>(nSegments);
     for (int i = 0; i < nSegments; ++i) {
         Float uMin = i / (Float)nSegments;
@@ -593,7 +592,7 @@ bool Curve::IntersectRay(const Ray &r, Float tMax,
 }
 
 bool Curve::RecursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Point3f> cp,
-                               const Transform &ObjectFromRay, Float u0, Float u1,
+                               const Transform &objectFromRay, Float u0, Float u1,
                                int depth, pstd::optional<ShapeIntersection> *si) const {
     Float rayLength = Length(ray.d);
     if (depth > 0) {
@@ -614,7 +613,7 @@ bool Curve::RecursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
                 continue;
 
             // Recursively test ray-segment intersection
-            bool hit = RecursiveIntersect(ray, tMax, cps, ObjectFromRay, u[seg],
+            bool hit = RecursiveIntersect(ray, tMax, cps, objectFromRay, u[seg],
                                           u[seg + 1], depth - 1, si);
             if (hit && si == nullptr)
                 return true;
@@ -663,8 +662,8 @@ bool Curve::RecursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
         Vector3f dpcdw;
         Point3f pc =
             EvaluateCubicBezier(pstd::span<const Point3f>(cp), Clamp(w, 0, 1), &dpcdw);
-        Float ptCurveDist2 = pc.x * pc.x + pc.y * pc.y;
-        if (ptCurveDist2 > hitWidth * hitWidth * .25f)
+        Float ptCurveDist2 = Sqr(pc.x) + Sqr(pc.y);
+        if (ptCurveDist2 > Sqr(hitWidth) * 0.25f)
             return false;
         if (pc.z < 0 || pc.z > rayLength * tMax)
             return false;
@@ -692,7 +691,7 @@ bool Curve::RecursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
                 dpdv = Normalize(Cross(nHit, dpdu)) * hitWidth;
             else {
                 // Compute curve $\dpdv$ for flat and cylinder curves
-                Vector3f dpduPlane = ObjectFromRay.ApplyInverse(dpdu);
+                Vector3f dpduPlane = objectFromRay.ApplyInverse(dpdu);
                 Vector3f dpdvPlane =
                     Normalize(Vector3f(-dpduPlane.y, dpduPlane.x, 0)) * hitWidth;
                 if (common->type == CurveType::Cylinder) {
@@ -701,11 +700,11 @@ bool Curve::RecursiveIntersect(const Ray &ray, Float tMax, pstd::span<const Poin
                     Transform rot = Rotate(-theta, dpduPlane);
                     dpdvPlane = rot(dpdvPlane);
                 }
-                dpdv = ObjectFromRay(dpdvPlane);
+                dpdv = objectFromRay(dpdvPlane);
             }
 
             // Compute error bounds for curve intersection
-            Vector3f pError(2 * hitWidth, 2 * hitWidth, 2 * hitWidth);
+            Vector3f pError(hitWidth, hitWidth, hitWidth);
 
             bool flipNormal =
                 common->reverseOrientation ^ common->transformSwapsHandedness;
@@ -748,11 +747,11 @@ std::string Curve::ToString() const {
     return StringPrintf("[ Curve common: %s uMin: %f uMax: %f ]", *common, uMin, uMax);
 }
 
-pstd::vector<ShapeHandle> Curve::Create(const Transform *renderFromObject,
-                                        const Transform *objectFromRender,
-                                        bool reverseOrientation,
-                                        const ParameterDictionary &parameters,
-                                        const FileLoc *loc, Allocator alloc) {
+pstd::vector<Shape> Curve::Create(const Transform *renderFromObject,
+                                  const Transform *objectFromRender,
+                                  bool reverseOrientation,
+                                  const ParameterDictionary &parameters,
+                                  const FileLoc *loc, Allocator alloc) {
     Float width = parameters.GetOneFloat("width", 1.f);
     Float width0 = parameters.GetOneFloat("width0", width);
     Float width1 = parameters.GetOneFloat("width1", width);
@@ -838,7 +837,7 @@ pstd::vector<ShapeHandle> Curve::Create(const Transform *renderFromObject,
         return {};
     }
 
-    pstd::vector<ShapeHandle> curves(alloc);
+    pstd::vector<Shape> curves(alloc);
     // Pointer to the first control point for the current segment. This is
     // updated after each loop iteration depending on the current basis.
     int cpOffset = 0;
@@ -981,8 +980,8 @@ BilinearPatchMesh *BilinearPatch::CreateMesh(const Transform *renderFromObject,
         std::move(N), std::move(uv), std::move(faceIndices), imageDist);
 }
 
-pstd::vector<ShapeHandle> BilinearPatch::CreatePatches(const BilinearPatchMesh *mesh,
-                                                       Allocator alloc) {
+pstd::vector<Shape> BilinearPatch::CreatePatches(const BilinearPatchMesh *mesh,
+                                                 Allocator alloc) {
     static std::mutex allMeshesLock;
     allMeshesLock.lock();
     CHECK_LT(allMeshes->size(), 1 << 31);
@@ -990,7 +989,7 @@ pstd::vector<ShapeHandle> BilinearPatch::CreatePatches(const BilinearPatchMesh *
     allMeshes->push_back(mesh);
     allMeshesLock.unlock();
 
-    pstd::vector<ShapeHandle> blps(mesh->nPatches, alloc);
+    pstd::vector<Shape> blps(mesh->nPatches, alloc);
     BilinearPatch *patches = alloc.allocate_object<BilinearPatch>(mesh->nPatches);
     for (int i = 0; i < mesh->nPatches; ++i) {
         alloc.construct(&patches[i], mesh, meshIndex, i);
@@ -1274,7 +1273,7 @@ pstd::optional<ShapeSample> BilinearPatch::Sample(const ShapeSampleContext &ctx,
 
         return ss;
     }
-    // Sample direction to rectanglular bilinear patch
+    // Sample direction to rectangular bilinear patch
     Float pdf = 1;
     // Warp uniform sample _u_ to account for incident $\cos \theta$ factor
     if (ctx.ns != Normal3f(0, 0, 0)) {
@@ -1356,13 +1355,13 @@ STAT_COUNTER("Geometry/Spheres", nSpheres);
 STAT_COUNTER("Geometry/Cylinders", nCylinders);
 STAT_COUNTER("Geometry/Disks", nDisks);
 
-pstd::vector<ShapeHandle> ShapeHandle::Create(const std::string &name,
-                                              const Transform *renderFromObject,
-                                              const Transform *objectFromRender,
-                                              bool reverseOrientation,
-                                              const ParameterDictionary &parameters,
-                                              const FileLoc *loc, Allocator alloc) {
-    pstd::vector<ShapeHandle> shapes(alloc);
+pstd::vector<Shape> Shape::Create(const std::string &name,
+                                  const Transform *renderFromObject,
+                                  const Transform *objectFromRender,
+                                  bool reverseOrientation,
+                                  const ParameterDictionary &parameters,
+                                  const FileLoc *loc, Allocator alloc) {
+    pstd::vector<Shape> shapes(alloc);
     if (name == "sphere") {
         shapes = {Sphere::Create(renderFromObject, objectFromRender, reverseOrientation,
                                  parameters, loc, alloc)};
@@ -1405,8 +1404,7 @@ pstd::vector<ShapeHandle> ShapeHandle::Create(const std::string &name,
             BilinearPatchMesh *mesh = alloc.new_object<BilinearPatchMesh>(
                 *renderFromObject, reverseOrientation, plyMesh.quadIndices, plyMesh.p,
                 plyMesh.n, plyMesh.uv, plyMesh.faceIndices, nullptr /* image dist */);
-            pstd::vector<ShapeHandle> quadMesh =
-                BilinearPatch::CreatePatches(mesh, alloc);
+            pstd::vector<Shape> quadMesh = BilinearPatch::CreatePatches(mesh, alloc);
             shapes.insert(shapes.end(), quadMesh.begin(), quadMesh.end());
         }
     } else if (name == "loopsubdiv") {
@@ -1436,7 +1434,7 @@ pstd::vector<ShapeHandle> ShapeHandle::Create(const std::string &name,
     return shapes;
 }
 
-std::string ShapeHandle::ToString() const {
+std::string Shape::ToString() const {
     if (ptr() == nullptr)
         return "(nullptr)";
 
