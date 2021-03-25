@@ -257,14 +257,17 @@ void ImageTileIntegrator::Render() {
             // P3D always set seed when independent
             if (*Options->independent) {
 
-                uint64_t randomseed;
-                randomseed = rand();
-
-                int seed = threadPixel.x + threadPixel.y + randomseed;
-
-                samplerPrototype.setSeed(seed);  
                 camera.GetFilm().Clear();
             }
+
+            // clone again each sampler with new seed
+            uint64_t randomseed;
+            randomseed = rand();
+            int seed = threadPixel.x + threadPixel.y + randomseed;
+
+            // avoid periodic random sequence
+            samplerPrototype.setSeed(seed);  
+            samplers = samplerPrototype.Clone(MaxThreadIndex());
         }
     }
 
