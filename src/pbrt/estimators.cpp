@@ -19,42 +19,46 @@
 
 namespace pbrt {
 
-std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
+std::shared_ptr<Estimator> Estimator::Create(const std::string &name) {
 
-    std::unique_ptr<Estimator> estimator;
+    std::shared_ptr<Estimator> estimator;
 
     // TODO: Later use of paramset maybe..
     if (name == "mean")
-        estimator = std::make_unique<MeanEstimator>(name);
+        estimator = std::make_shared<MeanEstimator>(name);
     else if (name == "mon")
-        estimator = std::make_unique<MONEstimator>(name);
+        estimator = std::make_shared<MONEstimator>(name);
     else if (name == "amon")
-        estimator = std::make_unique<AlphaMONEstimator>(name);
+        estimator = std::make_shared<AlphaMONEstimator>(name);
     else if (name == "admon")
-        estimator = std::make_unique<AlphaDistMONEstimator>(name);
+        estimator = std::make_shared<AlphaDistMONEstimator>(name);
     else if (name == "gini-mon")
-        estimator = std::make_unique<GiniMONEstimator>(name);
+        estimator = std::make_shared<GiniMONEstimator>(name);
     else if (name == "gini-binary-mon")
-        estimator = std::make_unique<GiniBinaryMONEstimator>(name);
+        estimator = std::make_shared<GiniBinaryMONEstimator>(name);
     else if (name == "gini-partial-mon")
-        estimator = std::make_unique<GiniPartialMONEstimator>(name);
+        estimator = std::make_shared<GiniPartialMONEstimator>(name);
     else if (name == "gini-dmon")
-        estimator = std::make_unique<GiniDistMONEstimator>(name);
+        estimator = std::make_shared<GiniDistMONEstimator>(name);
     else if (name == "gini-partial-dmon")
-        estimator = std::make_unique<GiniDistPartialMONEstimator>(name);
+        estimator = std::make_shared<GiniDistPartialMONEstimator>(name);
     else if (name == "pakmon")
-        estimator = std::make_unique<PakMONEstimator>(name);
+        estimator = std::make_shared<PakMONEstimator>(name);
     else if (name == "mean-or-mon")
-        estimator = std::make_unique<MeanOrMONEstimator>(name);
+        estimator = std::make_shared<MeanOrMONEstimator>(name);
     else {
         printf("%s: estimator type unknown. Use of default: mean", name.c_str());
-        estimator = std::make_unique<MeanEstimator>(name);
+        estimator = std::make_shared<MeanEstimator>(name);
     }
 
     if (!estimator)
         printf("%s: unable to create estimator.", name.c_str());
 
     return estimator;
+}
+
+std::string Estimator::getName() const {
+    return name;
 }
 
 std::string Estimator::ToString() const {

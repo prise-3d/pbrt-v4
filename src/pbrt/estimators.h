@@ -79,10 +79,12 @@ class Estimator {
 
         ~Estimator() {};
         
-        static std::unique_ptr<Estimator> Create(const std::string &name); 
+        static std::shared_ptr<Estimator> Create(const std::string &name); 
 
         PBRT_CPU_GPU
         virtual void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const = 0;
+
+        std::string getName() const;
 
         std::string ToString() const;
 

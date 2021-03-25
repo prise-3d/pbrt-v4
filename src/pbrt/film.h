@@ -361,7 +361,8 @@ class RGBFilm : public FilmBase {
     Float filterIntegral;
     SquareMatrix<3> outputRGBFromSensorRGB;
     Array2D<PixelWindow> pixels;
-    std::unique_ptr<Estimator> estimator;
+    std::shared_ptr<Estimator> estimator;
+    std::vector<std::shared_ptr<Estimator>> allEstimators;
 };
 
 // GBufferFilm Definition

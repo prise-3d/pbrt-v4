@@ -491,7 +491,11 @@ RGBFilm::RGBFilm(FilmBaseParameters p, const RGBColorSpace *colorSpace,
     //     }
     // }); 
 
-    estimator = Estimator::Create(Options->estimator);
+    // create all expected estimators
+    std::vector<std::string> estimatorsName = {"mon", "mean", "gini-binary-mon", "gini-dmon", "gini-mon", "gini-partial-dmon", "gini-partial-mon"};
+
+    for (std::string name : estimatorsName)
+        allEstimators.push_back(Estimator::Create(name));
 
     filmPixelMemory += pixelBounds.Area() * sizeof(PixelWindow);
     outputRGBFromSensorRGB = colorSpace->RGBFromXYZ * sensor->XYZFromSensorRGB;
@@ -529,34 +533,40 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
 
 void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imageIndex) {
 
-    Image image = GetImage(&metadata, splatScale);
+    for (std::shared_ptr<Estimator> est : allEstimators) {
+        
+        // set current estimator
+        estimator = est;
+        
+        Image image = GetImage(&metadata, splatScale);
 
-    // P3D : updates create new image with `spp` samples
-    // define delimiter to split image name
-    std::string delimiter = ".";
-    std::string output_folder = Options->folderName;
-    
-    // find prefix and postfix information from `filename`
-    std::string filename_prefix = filename.substr(0, filename.find(delimiter));
-    std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
+        // P3D : updates create new image with `spp` samples
+        // define delimiter to split image name
+        std::string delimiter = ".";
+        std::string output_folder = Options->folderName + "-" + est->getName(); 
+        
+        // find prefix and postfix information from `filename`
+        std::string filename_prefix = filename.substr(0, filename.find(delimiter));
+        std::string filename_postfix = filename.substr(filename.find(delimiter), filename.length());
 
-    // create custom image
-    std::string indexStr(std::to_string(imageIndex));
+        // create custom image
+        std::string indexStr(std::to_string(imageIndex));
 
-    while(indexStr.length() < *Options->ndigits){
-        indexStr = "0" + indexStr;
+        while(indexStr.length() < *Options->ndigits){
+            indexStr = "0" + indexStr;
+        }
+
+        // build folder
+        std::string folder_image = std::string(output_folder + "/" + filename_prefix);
+        std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + indexStr + filename_postfix;
+        
+        // TODO : improve (recursively create folders)
+        mkdir(output_folder.c_str(), 0775);
+        mkdir(folder_image.c_str(), 0775);
+
+        LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
+        image.Write(temp_filename, metadata);
     }
-
-    // build folder
-    std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + indexStr + filename_postfix;
-    
-    // TODO : improve (recursively create folders)
-    mkdir(output_folder.c_str(), 0775);
-    mkdir(folder_image.c_str(), 0775);
-
-    LOG_VERBOSE("Writing image %s with bounds %s", filename, pixelBounds);
-    image.Write(temp_filename, metadata);
 }
 
 Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
