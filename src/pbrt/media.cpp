@@ -32,7 +32,7 @@ std::string MediumInterface::ToString() const {
                         outside ? outside.ToString().c_str() : "(nullptr)");
 }
 
-std::string PhaseFunctionHandle::ToString() const {
+std::string PhaseFunction::ToString() const {
     if (ptr() == nullptr)
         return "(nullptr)";
 
@@ -41,7 +41,7 @@ std::string PhaseFunctionHandle::ToString() const {
 }
 
 std::string MediumSample::ToString() const {
-    return StringPrintf("[ MediumSample intr: %s Tmaj: %s ]", intr, Tmaj);
+    return StringPrintf("[ MediumSample intr: %s T_maj: %s ]", intr, T_maj);
 }
 
 // HenyeyGreenstein Method Definitions
@@ -54,8 +54,8 @@ struct MeasuredSS {
     RGB sigma_prime_s, sigma_a;  // mm^-1
 };
 
-bool GetMediumScatteringProperties(const std::string &name, SpectrumHandle *sigma_a,
-                                   SpectrumHandle *sigma_s, Allocator alloc) {
+bool GetMediumScatteringProperties(const std::string &name, Spectrum *sigma_a,
+                                   Spectrum *sigma_s, Allocator alloc) {
     static MeasuredSS SubsurfaceParameterTable[] = {
         // From "A Practical Model for Subsurface Light Transport"
         // Jensen, Marschner, Levoy, Hanrahan
@@ -128,12 +128,12 @@ bool GetMediumScatteringProperties(const std::string &name, SpectrumHandle *sigm
     return false;
 }
 
-bool MediumHandle::IsEmissive() const {
+bool Medium::IsEmissive() const {
     auto is = [&](auto ptr) { return ptr->IsEmissive(); };
     return DispatchCPU(is);
 }
 
-std::string MediumHandle::ToString() const {
+std::string Medium::ToString() const {
     if (ptr() == nullptr)
         return "(nullptr)";
 
@@ -144,7 +144,7 @@ std::string MediumHandle::ToString() const {
 // HomogeneousMedium Method Definitions
 HomogeneousMedium *HomogeneousMedium::Create(const ParameterDictionary &parameters,
                                              const FileLoc *loc, Allocator alloc) {
-    SpectrumHandle sig_a = nullptr, sig_s = nullptr;
+    Spectrum sig_a = nullptr, sig_s = nullptr;
     std::string preset = parameters.GetOneString("preset", "");
     if (!preset.empty()) {
         if (!GetMediumScatteringProperties(preset, &sig_a, &sig_s, alloc))
@@ -163,7 +163,7 @@ HomogeneousMedium *HomogeneousMedium::Create(const ParameterDictionary &paramete
             sig_s = alloc.new_object<ConstantSpectrum>(1.f);
     }
 
-    SpectrumHandle Le =
+    Spectrum Le =
         parameters.GetOneSpectrum("Le", nullptr, SpectrumType::Illuminant, alloc);
     Float LeScale = parameters.GetOneFloat("Lescale", 1.f);
     if (Le == nullptr || Le.MaxValue() == 0)
@@ -189,13 +189,11 @@ STAT_MEMORY_COUNTER("Memory/Volume grids", volumeGridBytes);
 // UniformGridMediumProvider Method Definitions
 UniformGridMediumProvider::UniformGridMediumProvider(
     const Bounds3f &bounds, pstd::optional<SampledGrid<Float>> dgrid,
-    pstd::optional<SampledGrid<RGBUnboundedSpectrum>> rgbgrid,
-    const RGBColorSpace *colorSpace, SpectrumHandle Le, SampledGrid<Float> Legrid,
-    Allocator alloc)
+    pstd::optional<SampledGrid<RGBUnboundedSpectrum>> rgbgrid, Spectrum Le,
+    SampledGrid<Float> Legrid, Allocator alloc)
     : bounds(bounds),
       densityGrid(std::move(dgrid)),
       rgbDensityGrid(std::move(rgbgrid)),
-      colorSpace(colorSpace),
       Le_spec(Le, alloc),
       LeScaleGrid(std::move(Legrid)) {
     volumeGridBytes += LeScaleGrid.BytesAllocated();
@@ -221,13 +219,12 @@ UniformGridMediumProvider *UniformGridMediumProvider::Create(
                   "Uniform grid medium has %d density values; expected nx*ny*nz = %d",
                   nDensity, nx * ny * nz);
 
-    const RGBColorSpace *colorSpace = parameters.ColorSpace();
-
     pstd::optional<SampledGrid<Float>> densityGrid;
     pstd::optional<SampledGrid<RGBUnboundedSpectrum>> rgbDensityGrid;
     if (density.size())
         densityGrid = SampledGrid<Float>(density, nx, ny, nz, alloc);
     else {
+        const RGBColorSpace *colorSpace = parameters.ColorSpace();
         std::vector<RGBUnboundedSpectrum> rgbSpectrumDensity;
         for (RGB rgb : rgbDensity)
             rgbSpectrumDensity.push_back(RGBUnboundedSpectrum(*colorSpace, rgb));
@@ -235,7 +232,7 @@ UniformGridMediumProvider *UniformGridMediumProvider::Create(
             SampledGrid<RGBUnboundedSpectrum>(rgbSpectrumDensity, nx, ny, nz, alloc);
     }
 
-    SpectrumHandle Le =
+    Spectrum Le =
         parameters.GetOneSpectrum("Le", nullptr, SpectrumType::Illuminant, alloc);
     Float LeNorm = 1;
     if (Le == nullptr || Le.MaxValue() == 0)
@@ -261,14 +258,13 @@ UniformGridMediumProvider *UniformGridMediumProvider::Create(
     Point3f p1 = parameters.GetOnePoint3f("p1", Point3f(1.f, 1.f, 1.f));
 
     return alloc.new_object<UniformGridMediumProvider>(
-        Bounds3f(p0, p1), std::move(densityGrid), std::move(rgbDensityGrid), colorSpace,
-        Le, std::move(LeGrid), alloc);
+        Bounds3f(p0, p1), std::move(densityGrid), std::move(rgbDensityGrid), Le,
+        std::move(LeGrid), alloc);
 }
 
 std::string UniformGridMediumProvider::ToString() const {
-    return StringPrintf(
-        "[ UniformGridMediumProvider Le_spec: %s colorSpace: %s (grids elided) ]",
-        Le_spec, *colorSpace);
+    return StringPrintf("[ UniformGridMediumProvider Le_spec: %s (grids elided) ]",
+                        Le_spec);
 }
 
 // CloudMediumProvider Method Definitions
@@ -339,11 +335,10 @@ NanoVDBMediumProvider *NanoVDBMediumProvider::Create(
                                                    temperatureCutoff, temperatureScale);
 }
 
-MediumHandle MediumHandle::Create(const std::string &name,
-                                  const ParameterDictionary &parameters,
-                                  const Transform &renderFromMedium, const FileLoc *loc,
-                                  Allocator alloc) {
-    MediumHandle m = nullptr;
+Medium Medium::Create(const std::string &name, const ParameterDictionary &parameters,
+                      const Transform &renderFromMedium, const FileLoc *loc,
+                      Allocator alloc) {
+    Medium m = nullptr;
     if (name == "homogeneous")
         m = HomogeneousMedium::Create(parameters, loc, alloc);
     else if (name == "uniformgrid") {

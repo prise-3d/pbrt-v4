@@ -2,6 +2,7 @@
 // The pbrt source code is licensed under the Apache License, Version 2.0.
 // SPDX: Apache-2.0
 
+#include <unistd.h>
 #include <pbrt/gpu/pathintegrator.h>
 
 #include <pbrt/base/medium.h>
@@ -51,7 +52,7 @@ STAT_MEMORY_COUNTER("Memory/GPU path integrator pixel state", pathIntegratorByte
 
 GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) {
     // Allocate all of the data structures that represent the scene...
-    std::map<std::string, MediumHandle> media = scene.CreateMedia(alloc);
+    std::map<std::string, Medium> media = scene.CreateMedia(alloc);
 
     haveMedia = false;
     // Check the shapes...
@@ -62,7 +63,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
         if (!shape.insideMedium.empty() || !shape.outsideMedium.empty())
             haveMedia = true;
 
-    auto findMedium = [&](const std::string &s, const FileLoc *loc) -> MediumHandle {
+    auto findMedium = [&](const std::string &s, const FileLoc *loc) -> Medium {
         if (s.empty())
             return nullptr;
 
@@ -73,8 +74,8 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
         return iter->second;
     };
 
-    filter = FilterHandle::Create(scene.filter.name, scene.filter.parameters,
-                                  &scene.filter.loc, alloc);
+    filter = Filter::Create(scene.filter.name, scene.filter.parameters, &scene.filter.loc,
+                            alloc);
 
     Float exposureTime = scene.camera.parameters.GetOneFloat("shutterclose", 1.f) -
                          scene.camera.parameters.GetOneFloat("shutteropen", 0.f);
@@ -83,28 +84,27 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
                   "The specified camera shutter times imply that the shutter "
                   "does not open.  A black image will result.");
 
-    film = FilmHandle::Create(scene.film.name, scene.film.parameters, exposureTime,
-                              filter, &scene.film.loc, alloc);
+    film = Film::Create(scene.film.name, scene.film.parameters, exposureTime, filter,
+                        &scene.film.loc, alloc);
     initializeVisibleSurface = film.UsesVisibleSurface();
 
-    sampler = SamplerHandle::Create(scene.sampler.name, scene.sampler.parameters,
-                                    film.FullResolution(), &scene.sampler.loc, alloc);
+    sampler = Sampler::Create(scene.sampler.name, scene.sampler.parameters,
+                              film.FullResolution(), &scene.sampler.loc, alloc);
 
-    MediumHandle cameraMedium = findMedium(scene.camera.medium, &scene.camera.loc);
-    camera = CameraHandle::Create(scene.camera.name, scene.camera.parameters,
-                                  cameraMedium, scene.camera.cameraTransform, film,
-                                  &scene.camera.loc, alloc);
+    Medium cameraMedium = findMedium(scene.camera.medium, &scene.camera.loc);
+    camera = Camera::Create(scene.camera.name, scene.camera.parameters, cameraMedium,
+                            scene.camera.cameraTransform, film, &scene.camera.loc, alloc);
 
-    pstd::vector<LightHandle> allLights;
+    pstd::vector<Light> allLights;
 
-    envLights = alloc.new_object<pstd::vector<LightHandle>>(alloc);
+    envLights = alloc.new_object<pstd::vector<Light>>(alloc);
     for (const auto &light : scene.lights) {
-        MediumHandle outsideMedium = findMedium(light.medium, &light.loc);
+        Medium outsideMedium = findMedium(light.medium, &light.loc);
         if (light.renderFromObject.IsAnimated())
             Warning(&light.loc,
                     "Animated lights aren't supported. Using the start transform.");
 
-        LightHandle l = LightHandle::Create(
+        Light l = Light::Create(
             light.name, light.parameters, light.renderFromObject.startTransform,
             scene.camera.cameraTransform, outsideMedium, &light.loc, alloc);
 
@@ -116,7 +116,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
     }
 
     // Area lights...
-    std::map<int, pstd::vector<LightHandle> *> shapeIndexToAreaLights;
+    std::map<int, pstd::vector<Light> *> shapeIndexToAreaLights;
     for (size_t i = 0; i < scene.shapes.size(); ++i) {
         const auto &shape = scene.shapes[i];
         if (shape.lightIndex == -1)
@@ -125,18 +125,18 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
         const auto &areaLightEntity = scene.areaLights[shape.lightIndex];
         AnimatedTransform renderFromLight(*shape.renderFromObject);
 
-        pstd::vector<ShapeHandle> shapeHandles = ShapeHandle::Create(
-            shape.name, shape.renderFromObject, shape.objectFromRender,
-            shape.reverseOrientation, shape.parameters, &shape.loc, alloc);
+        pstd::vector<Shape> shapes =
+            Shape::Create(shape.name, shape.renderFromObject, shape.objectFromRender,
+                          shape.reverseOrientation, shape.parameters, &shape.loc, alloc);
 
-        if (shapeHandles.empty())
+        if (shapes.empty())
             continue;
 
-        MediumHandle outsideMedium = findMedium(shape.outsideMedium, &shape.loc);
+        Medium outsideMedium = findMedium(shape.outsideMedium, &shape.loc);
 
-        pstd::vector<LightHandle> *lightsForShape =
-            alloc.new_object<pstd::vector<LightHandle>>(alloc);
-        for (ShapeHandle sh : shapeHandles) {
+        pstd::vector<Light> *lightsForShape =
+            alloc.new_object<pstd::vector<Light>>(alloc);
+        for (Shape sh : shapes) {
             if (renderFromLight.IsAnimated())
                 ErrorExit(&shape.loc, "Animated lights are not supported.");
             DiffuseAreaLight *area = DiffuseAreaLight::Create(
@@ -156,7 +156,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
                          &haveSubsurface);
 
     // Preprocess the light sources
-    for (LightHandle light : allLights)
+    for (Light light : allLights)
         light.Preprocess(accel->Bounds());
 
     bool haveLights = !allLights.empty();
@@ -169,7 +169,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
         scene.integrator.parameters.GetOneString("lightsampler", "bvh");
     if (allLights.size() == 1)
         lightSamplerName = "uniform";
-    lightSampler = LightSamplerHandle::Create(lightSamplerName, allLights, alloc);
+    lightSampler = LightSampler::Create(lightSamplerName, allLights, alloc);
 
     if (scene.integrator.name != "path" && scene.integrator.name != "volpath")
         Warning(&scene.integrator.loc,
@@ -248,7 +248,7 @@ GPUPathIntegrator::GPUPathIntegrator(Allocator alloc, const ParsedScene &scene) 
 }
 
 // GPUPathIntegrator Method Definitions
-void GPUPathIntegrator::Render() {
+void GPUPathIntegrator::Render(int startSample, int endSample) {
     Vector2i resolution = film.PixelBounds().Diagonal();
     int spp = sampler.SamplesPerPixel();
     // Launch thread to copy image for display server, if enabled
@@ -319,7 +319,7 @@ void GPUPathIntegrator::Render() {
                        });
     }
 
-    int firstSampleIndex = 0, lastSampleIndex = spp;
+    int firstSampleIndex = startSample, lastSampleIndex = endSample;
     // Update sample index range based on debug start, if provided
     if (!Options->debugStart.empty()) {
         std::vector<int> values = SplitStringToInts(Options->debugStart, ',');
@@ -483,8 +483,6 @@ void GPUPathIntegrator::HandleEscapedRays(int depth) {
                 }
             }
             if (L) {
-                L = SafeDiv(L, w.lambda.PDF());
-
                 PBRT_DBG("Added L %f %f %f %f for escaped ray pixel index %d\n", L[0],
                          L[1], L[2], L[3], w.pixelIndex);
 
@@ -521,7 +519,6 @@ void GPUPathIntegrator::HandleRayFoundEmission(int depth) {
                 SampledSpectrum lightPathPDF = w.lightPathPDF * lightPDF;
                 L = w.T_hat * Le / (uniPathPDF + lightPathPDF).Average();
             }
-            L = SafeDiv(L, w.lambda.PDF());
 
             PBRT_DBG("Added L %f %f %f %f for pixel index %d\n", L[0], L[1], L[2], L[3],
                      w.pixelIndex);
@@ -599,16 +596,33 @@ void GPURender(ParsedScene &scene) {
     // Here add number of images to generate (use of --spp for sample per pixel)
     for (unsigned i = *Options->startIndex; i < *Options->nimages; i++) {
 
-        std::cout << "Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+        if (*Options->independent)
+            std::cout << "[Independent] Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
+        else
+            std::cout << "[Dependent] Rendering of image n° " + std::to_string(i + 1) + " of " + std::to_string(*Options->nimages) << std::endl;
 
         uint64_t randomseed;
         randomseed = rand();
 
+        // P3D : set seed only for the first image
+        if (!*Options->independent && i == *Options->startIndex)
+            integrator->sampler.setSeed(randomseed);
+
+        // P3D : always set seed when independent
+        //if (*Options->independent) // => try always set seed
         integrator->sampler.setSeed(randomseed);
+
         ///////////////////////////////////////////////////////////////////////////
         // Render!
         Timer timer;
-        integrator->Render();
+
+        // P3D update depending of method
+        int spp = integrator->sampler.SamplesPerPixel();
+
+        if (*Options->independent)
+            integrator->Render(0, spp);
+        else
+            integrator->Render(i * spp, (i + 1) * spp);
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
 
@@ -629,6 +643,13 @@ void GPURender(ParsedScene &scene) {
         metadata.renderTimeSeconds = timer.ElapsedSeconds();
         metadata.samplesPerPixel = integrator->sampler.SamplesPerPixel();
         integrator->film.WriteImage(metadata, 1., i);
+
+        // P3D : clear image when generated images are independent
+        if (*Options->independent)
+            integrator->film.Clear();
+
+        // P3D : sleep some time
+        usleep(1000000);
     }
 }
 
