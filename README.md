@@ -33,13 +33,10 @@ Extended command line parameter:
 - `--nimages`: {unsigned} -- number of independent images of `spp` samples to generate ;
 - `--independent`: {bool} -- save or not in an independant way (default 1, hence true) ;
 - `--startindex`: {unsigned} -- start output index of first generated image for new run ;
-- `--estimator`: {string} -- Expected estimator as output ["mean", "mon", "pakmon", "mean_or_mon"] using `src/pbrt/estimators.h` Estimator factory.
+- `--estimator`: {string} -- Expected estimator as output ["mean", "mon", "pakmon", "mean_or_mon", "gmon", ...] using `src/pbrt/estimators.h` Estimator factory.
 
-**Note:** current version enable the use `MoN` (Median of meaNs) estimator as output:
+**Note:** current version enable the use `MoN` (Median of meaNs) based estimator as output:
 - `nbuffers:` set the number of buffers (M-estimators) to use. It is a constant value in order to work on GPU. Value can be update and available at the top of the `src/pbrt/estimators.h` file (default 11). You need to compile again the pbrt version. A value of `1`, is equivalent to classical mean estimator ;
-  
-__TODO:__
-- `--independent`: {bool} -- adapt to GPU ; 
 
 Custom version [Features]
 -------------------------
