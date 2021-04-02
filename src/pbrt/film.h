@@ -308,9 +308,15 @@ class RGBFilm : public FilmBase {
         pixelWindow.buffers[pixelWindow.index].squaredSum[1] += rgb[1] * rgb[1];
         pixelWindow.buffers[pixelWindow.index].squaredSum[2] += rgb[2] * rgb[2];
 
+        // add of cubic sum of new pixel value
+        pixelWindow.buffers[pixelWindow.index].cubicSum[0] += rgb[0] * rgb[0] * rgb[0];
+        pixelWindow.buffers[pixelWindow.index].cubicSum[1] += rgb[1] * rgb[1] * rgb[1];
+        pixelWindow.buffers[pixelWindow.index].cubicSum[2] += rgb[2] * rgb[2] * rgb[2];
+
         pixelWindow.buffers[pixelWindow.index].weightSum += weight;
 
         pixelWindow.index += 1;
+        pixelWindow.nsamples += 1;
 
         if (pixelWindow.index >= pixelWindow.windowSize)
             pixelWindow.index = 0;

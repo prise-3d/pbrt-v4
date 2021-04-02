@@ -46,6 +46,8 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
         estimator = std::make_unique<PakMONEstimator>(name);
     else if (name == "mean-or-mon")
         estimator = std::make_unique<MeanOrMONEstimator>(name);
+    else if (name == "abmm")
+        estimator = std::make_unique<aBMMEstimator>(name);
     else {
         printf("%s: estimator type unknown. Use of default: mean", name.c_str());
         estimator = std::make_unique<MeanEstimator>(name);
@@ -82,6 +84,47 @@ void MeanEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
             rgb[i] += pixelWindow.buffers[j].rgbSum[i];
             splatRGB[i] = splatRGB[i] + pixelWindow.buffers[j].splatRGB[i];
         }
+    }
+};
+
+void aBMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+{
+    
+    weightSum = 0.;
+    double alpha = 1;
+
+    // get each weightSum of pixelMoN
+    for (int j = 0; j < pixelWindow.windowSize; j++) {
+        weightSum += pixelWindow.buffers[j].weightSum;
+    }
+
+    // based on channel numbers
+    for (int i = 0; i < 3; i++) {
+
+        // loop over pixels (used as means storage) for computing real channel value
+        rgb[i] = 0.;
+        splatRGB[i] = 0.;
+        Float squaredSum = 0;
+        Float cubicSum = 0;
+
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            rgb[i] += pixelWindow.buffers[j].rgbSum[i];
+            splatRGB[i] = splatRGB[i] + pixelWindow.buffers[j].splatRGB[i];
+            squaredSum += pixelWindow.buffers[j].squaredSum[i];
+            cubicSum += pixelWindow.buffers[j].cubicSum[i];
+        }
+
+        // TODO : check if weightSum is required...
+        Float currentMean = rgb[i] / weightSum;
+        Float varTheta = (squaredSum / weightSum) - (currentMean * currentMean);
+        Float stdTheta = pstd::sqrt(varTheta);
+        std::cout << "STD is: " << stdTheta << std::endl;
+
+        // TODO : check N
+        Float skewTheta = pow(((cubicSum / weightSum) - currentMean) / stdTheta, 3); // / (pow(stdTheta, 3));
+
+        Float aBBMTheta = currentMean - ((1. / 3.) * (stdTheta / (weightSum * alpha + 2))) * skewTheta;
+        rgb[i] = aBBMTheta * weightSum;
     }
 };
 

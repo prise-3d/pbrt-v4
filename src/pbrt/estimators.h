@@ -45,6 +45,7 @@ struct PixelBuffer {
 
     double rgbSum[3] = {0., 0., 0.};
     double squaredSum[3] = {0., 0., 0.};
+    double cubicSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
     double weightSum = 0.;
 
@@ -53,6 +54,7 @@ struct PixelBuffer {
         for (int i = 0; i < 3; i++) {
             rgbSum[i] = 0.;
             squaredSum[i] = 0.;
+            cubicSum[i] = 0.;
             splatRGB[i] = 0.;
         }
 
@@ -69,6 +71,7 @@ struct PixelWindow {
 
     int windowSize = nbuffers; // number of buffers clusters
     int index = 0; // keep track of index used
+    int nsamples = 0; // keep track of nsamples;
     bool filled = false;
 };
 
@@ -91,6 +94,18 @@ class Estimator {
         Estimator(const std::string &name) : name(name) {};
        
         std::string name;
+};
+
+// approximated Bayesian Median of Means Estimator class
+class aBMMEstimator : public Estimator {
+
+    public:
+
+        aBMMEstimator(const std::string &name) : Estimator(name) {}; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
 };
 
 // Mean Estimator class
