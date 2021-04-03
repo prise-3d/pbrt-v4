@@ -123,10 +123,10 @@ void aBMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
 
             Float mean = sum / n; // M1
             Float onlineM2 = (squaredSum / n) - (mean * mean); // M2
-            Float stdTheta = pstd::sqrt(onlineM2);
+            Float stdTheta = std::sqrt(onlineM2);
 
             Float onlineM3 = (cubicSum - 3 * mean * squaredSum) / n + 2 * (mean * mean * mean);
-            Float onlineSkew = onlineM3 / pow(onlineM2, 1.5);
+            Float onlineSkew = onlineM3 / std::pow(onlineM2, 1.5);
 
             // std::cout << "------------------------" << std::endl;
             // std::cout << "Weight is: " << n << std::endl;
