@@ -47,7 +47,9 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
     else if (name == "mean-or-mon")
         estimator = std::make_unique<MeanOrMONEstimator>(name);
     else if (name == "abmm")
-        estimator = std::make_unique<aBMMEstimator>(name);
+        estimator = std::make_unique<ABMMEstimator>(name);
+    else if (name == "gabmm")
+        estimator = std::make_unique<GABMMEstimator>(name);
     else {
         printf("%s: estimator type unknown. Use of default: mean", name.c_str());
         estimator = std::make_unique<MeanEstimator>(name);
@@ -87,11 +89,15 @@ void MeanEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
     }
 };
 
-void aBMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+
+void ABMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const {
+    this->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1.);
+};
+
+void ABMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const
 {
     
     weightSum = 0.;
-    Float alpha = 1.;
 
     // get each weightSum of pixelMoN
     for (int j = 0; j < pixelWindow.windowSize; j++) {
@@ -142,6 +148,28 @@ void aBMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
             rgb[i] = aBMM * n;
         }
     }
+};
+
+void GABMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+{
+    // for each channel number
+    Float giniSum = 0;
+
+    for (int i = 0; i < 3; i++) {
+
+        pstd::vector<Float> cvalues;
+
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            cvalues.push_back(pixelWindow.buffers[j].rgbSum[i] / pixelWindow.buffers[j].weightSum);
+        }
+
+        giniSum += this->getGini(cvalues);
+    }
+
+    Float giniMean = giniSum / 3.;
+
+    // use of gini ean for estimate
+    aBMMEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1. - giniMean);
 };
 
 void MONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const

@@ -97,15 +97,17 @@ class Estimator {
 };
 
 // approximated Bayesian Median of Means Estimator class
-class aBMMEstimator : public Estimator {
+class ABMMEstimator : public Estimator {
 
     public:
 
-        aBMMEstimator(const std::string &name) : Estimator(name) {}; 
+        ABMMEstimator(const std::string &name) : Estimator(name) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
 };
 
 // Mean Estimator class
@@ -222,6 +224,26 @@ class GiniMONEstimator : public Estimator {
 
         PBRT_CPU_GPU
         Float getGini(pstd::vector<Float> values) const;
+};
+
+// GiniaBMM Estimator class
+// Median of meaNs: use of median value from available mean buffers
+// Use of Gini in order to well use \alpha criterion
+class GABMMEstimator : public GiniMONEstimator {
+
+    public:
+
+        GABMMEstimator(const std::string &name) : GiniMONEstimator(name) {
+
+            // default alpha value
+            aBMMEstimator = std::make_unique<ABMMEstimator>("abmm");
+        }; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+    protected:
+        std::unique_ptr<ABMMEstimator> aBMMEstimator;
 };
 
 class GiniBinaryMONEstimator : public GiniMONEstimator {
