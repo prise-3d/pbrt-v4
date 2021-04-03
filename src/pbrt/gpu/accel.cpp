@@ -583,6 +583,7 @@ GPUAccel::GPUAccel(
     }
 
     // Create OptiX context
+    LOG_VERBOSE("Starting OptiX initialization");
     OPTIX_CHECK(optixInit());
     OptixDeviceContextOptions ctxOptions = {};
 #ifndef NDEBUG
@@ -932,6 +933,9 @@ GPUAccel::GPUAccel(
     randomHitSBT.missRecordStrideInBytes = sizeof(MissRecord);
     randomHitSBT.missRecordCount = 1;
 
+    LOG_VERBOSE("Finished OptiX initialization");
+
+    LOG_VERBOSE("Starting to create textures and materials");
     // Textures
     NamedTextures textures = scene.CreateTextures(alloc, true);
 
@@ -965,12 +969,22 @@ GPUAccel::GPUAccel(
         updateMaterialNeeds(m);
     for (const auto &m : namedMaterials)
         updateMaterialNeeds(m.second);
+    LOG_VERBOSE("Finished creating textures and materials");
 
+    LOG_VERBOSE("Starting to create shapes and acceleration structures");
+    int nCurveWarnings = 0;
     for (const auto &shape : scene.shapes)
         if (shape.name != "sphere" && shape.name != "cylinder" && shape.name != "disk" &&
             shape.name != "trianglemesh" && shape.name != "plymesh" &&
-            shape.name != "loopsubdiv" && shape.name != "bilinearmesh")
-            ErrorExit(&shape.loc, "%s: unknown shape", shape.name);
+            shape.name != "loopsubdiv" && shape.name != "bilinearmesh") {
+            if (shape.name == "curve") {
+                if (++nCurveWarnings < 10)
+                    Warning(&shape.loc, "\"curve\" shape is not yet supported on the GPU.");
+                else if (nCurveWarnings == 10)
+                    Warning(&shape.loc, "\"curve\" shape is not yet supported on the GPU. (Silencing further warnings.) ");
+            } else
+                ErrorExit(&shape.loc, "%s: unknown shape", shape.name);
+        }
 
     OptixTraversableHandle triangleGASTraversable = createGASForTriangles(
         scene.shapes, hitPGTriangle, anyhitPGShadowTriangle, hitPGRandomHitTriangle,
@@ -1073,6 +1087,8 @@ GPUAccel::GPUAccel(
     std::vector<OptixBuildInput> buildInputs = {buildInput};
 
     rootTraversable = buildBVH({buildInput});
+
+    LOG_VERBOSE("Finished creating shapes and acceleration structures");
 
     if (!scene.animatedShapes.empty())
         Warning("Ignoring %d animated shapes", scene.animatedShapes.size());

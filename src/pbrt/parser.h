@@ -23,10 +23,10 @@ namespace pbrt {
 class ParsedParameter {
   public:
     // ParsedParameter Public Methods
-    ParsedParameter(Allocator alloc, FileLoc loc)
-        : loc(loc), numbers(alloc), strings(alloc), bools(alloc) {}
+    ParsedParameter(FileLoc loc) : loc(loc) {}
 
-    void AddNumber(double d);
+    void AddFloat(Float v);
+    void AddInt(int i);
     void AddString(std::string_view str);
     void AddBool(bool v);
 
@@ -35,7 +35,8 @@ class ParsedParameter {
     // ParsedParameter Public Members
     std::string type, name;
     FileLoc loc;
-    pstd::vector<double> numbers;
+    pstd::vector<Float> floats;
+    pstd::vector<int> ints;
     pstd::vector<std::string> strings;
     pstd::vector<uint8_t> bools;
     mutable bool lookedUp = false;

@@ -36,7 +36,7 @@
 namespace pbrt {
 
 // P3D update  mon parameter (if value of 1, no kmon use, hence classical mean)
-const int nbuffers = 11;
+const int nbuffers = 1;
 
 // Need to externalise PixelWindow declaration for RGBFilm
 // P3D Updates
@@ -45,6 +45,7 @@ struct PixelBuffer {
 
     double rgbSum[3] = {0., 0., 0.};
     double squaredSum[3] = {0., 0., 0.};
+    double cubicSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
     double weightSum = 0.;
 
@@ -53,6 +54,7 @@ struct PixelBuffer {
         for (int i = 0; i < 3; i++) {
             rgbSum[i] = 0.;
             squaredSum[i] = 0.;
+            cubicSum[i] = 0.;
             splatRGB[i] = 0.;
         }
 
@@ -69,6 +71,7 @@ struct PixelWindow {
 
     int windowSize = nbuffers; // number of buffers clusters
     int index = 0; // keep track of index used
+    int nsamples = 0; // keep track of nsamples;
     bool filled = false;
 };
 
@@ -91,6 +94,20 @@ class Estimator {
         Estimator(const std::string &name) : name(name) {};
        
         std::string name;
+};
+
+// approximated Bayesian Median of Means Estimator class
+class ABMMEstimator : public Estimator {
+
+    public:
+
+        ABMMEstimator(const std::string &name) : Estimator(name) {}; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
 };
 
 // Mean Estimator class
@@ -207,6 +224,26 @@ class GiniMONEstimator : public Estimator {
 
         PBRT_CPU_GPU
         Float getGini(pstd::vector<Float> values) const;
+};
+
+// GiniaBMM Estimator class
+// Median of meaNs: use of median value from available mean buffers
+// Use of Gini in order to well use \alpha criterion
+class GABMMEstimator : public GiniMONEstimator {
+
+    public:
+
+        GABMMEstimator(const std::string &name) : GiniMONEstimator(name) {
+
+            // default alpha value
+            aBMMEstimator = std::make_unique<ABMMEstimator>("abmm");
+        }; 
+
+        PBRT_CPU_GPU
+        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
+
+    protected:
+        std::unique_ptr<ABMMEstimator> aBMMEstimator;
 };
 
 class GiniBinaryMONEstimator : public GiniMONEstimator {
