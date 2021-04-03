@@ -91,7 +91,7 @@ void aBMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
 {
     
     weightSum = 0.;
-    double alpha = 1;
+    Float alpha = 1.;
 
     // get each weightSum of pixelMoN
     for (int j = 0; j < pixelWindow.windowSize; j++) {
@@ -104,27 +104,43 @@ void aBMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
         // loop over pixels (used as means storage) for computing real channel value
         rgb[i] = 0.;
         splatRGB[i] = 0.;
+        
+        Float sum = 0.;
         Float squaredSum = 0;
         Float cubicSum = 0;
 
         for (int j = 0; j < pixelWindow.windowSize; j++) {
             rgb[i] += pixelWindow.buffers[j].rgbSum[i];
+            sum += pixelWindow.buffers[j].rgbSum[i];
             splatRGB[i] = splatRGB[i] + pixelWindow.buffers[j].splatRGB[i];
             squaredSum += pixelWindow.buffers[j].squaredSum[i];
             cubicSum += pixelWindow.buffers[j].cubicSum[i];
         }
 
-        // TODO : check if weightSum is required...
-        Float currentMean = rgb[i] / weightSum;
-        Float varTheta = (squaredSum / weightSum) - (currentMean * currentMean);
-        Float stdTheta = pstd::sqrt(varTheta);
-        std::cout << "STD is: " << stdTheta << std::endl;
+        if (sum > 0.) {
+            // computation of different moments
+            int n = pixelWindow.nsamples; // using nsamples
 
-        // TODO : check N
-        Float skewTheta = pow(((cubicSum / weightSum) - currentMean) / stdTheta, 3); // / (pow(stdTheta, 3));
+            Float mean = sum / n; // M1
+            Float onlineM2 = (squaredSum / n) - (mean * mean); // M2
+            Float stdTheta = pstd::sqrt(onlineM2);
 
-        Float aBBMTheta = currentMean - ((1. / 3.) * (stdTheta / (weightSum * alpha + 2))) * skewTheta;
-        rgb[i] = aBBMTheta * weightSum;
+            Float onlineM3 = (cubicSum - 3 * mean * squaredSum) / n + 2 * (mean * mean * mean);
+            Float onlineSkew = onlineM3 / pow(onlineM2, 1.5);
+
+            // std::cout << "------------------------" << std::endl;
+            // std::cout << "Weight is: " << n << std::endl;
+            // std::cout << "Sum is: " << sum << std::endl;
+            // std::cout << "SquaredSum is: " << squaredSum << std::endl;
+            // std::cout << "CubicSum is: " << cubicSum << std::endl;
+            // std::cout << "Mean is: " << mean << std::endl;
+            // std::cout << "M2 is: " << onlineM2 << std::endl;
+            // std::cout << "M3 is: " << onlineM3 << std::endl;
+            // std::cout << "Skew is: " << onlineSkew << std::endl;
+            Float aBMM = mean - ((1. / 3.) * (stdTheta / (n * alpha + 2))) * onlineSkew;
+            // std::cout << "Estimation is: " << aBBM << std::endl;
+            rgb[i] = aBMM * n;
+        }
     }
 };
 

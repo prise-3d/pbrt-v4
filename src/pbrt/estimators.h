@@ -36,7 +36,7 @@
 namespace pbrt {
 
 // P3D update  mon parameter (if value of 1, no kmon use, hence classical mean)
-const int nbuffers = 11;
+const int nbuffers = 1;
 
 // Need to externalise PixelWindow declaration for RGBFilm
 // P3D Updates
