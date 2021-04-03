@@ -5,3 +5,5 @@ src/build
 .DS_Store
 .ipynb_checkpoints/
 build/
+studies/data
+studies/images
