@@ -54,7 +54,7 @@ class Film : public TaggedPointer<RGBFilm, GBufferFilm> {
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const;
 
     PBRT_CPU_GPU
-    Float ComputeStd();
+    void ComputeStd();
 
     // P3D Updates clear the whole film (pixels grid)
     PBRT_CPU_GPU

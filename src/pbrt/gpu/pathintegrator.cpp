@@ -619,10 +619,17 @@ void GPURender(ParsedScene &scene) {
         // P3D update depending of method
         int spp = integrator->sampler.SamplesPerPixel();
 
-        if (*Options->independent)
-            integrator->Render(0, spp);
-        else
-            integrator->Render(i * spp, (i + 1) * spp);
+        // TODO : add j loop for rendering each 1 sample the whole image
+        // Then update the std of the whole image
+
+        for (int j = 0; j < spp; j++){
+
+            // if (*Options->independent)
+            //     integrator->Render(i * spp, (i + 1) * spp);
+            // else
+            std::cout << "Rendering of " << i * spp + j << " to " << i * spp + j + 1 << std::endl;
+            integrator->Render(i * spp + j, i * spp + j + 1);
+        }
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
 

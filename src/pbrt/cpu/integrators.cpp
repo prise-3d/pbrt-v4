@@ -179,8 +179,8 @@ void ImageTileIntegrator::Render() {
 
     // default param
     unsigned imageCounter = 0;
-    nextWaveSize = *Options->pixelSamples;
-    waveEnd = *Options->pixelSamples;
+    nextWaveSize = 1; //*Options->pixelSamples;
+    waveEnd = 1; //*Options->pixelSamples;
 
     // Render image in waves
     while (waveStart < spp) {
@@ -209,6 +209,11 @@ void ImageTileIntegrator::Render() {
                     tileBounds.pMin.y, tileBounds.pMax.x, tileBounds.pMax.y);
             progress.Update((waveEnd - waveStart) * tileBounds.Area());
         });
+
+        // std::cout << std::endl;
+        // std::cout << "-----------------" << std::endl;
+        // std::cout << waveStart << " over " << spp << " done" << std::endl;
+        camera.GetFilm().ComputeStd();
 
         // Update start and end wave
         waveStart = waveEnd;

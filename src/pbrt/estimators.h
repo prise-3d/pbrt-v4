@@ -87,16 +87,6 @@ struct PixelWindow {
     */
     void update() {
 
-        Float stdSum = 0.;
-
-        // compute current mean and std
-        for (int i = 0; i < 3; i++) {
-            stdSum += (squaredSum[i] / allWeightSum) - (mean[i] * mean[i]);
-        }
-
-        // divide per number of chanels and get current std
-        currentStd = std::sqrt(stdSum / 3);
-
         // compute here the median of the current buffers
         Float currentWeight = 0.;
 
@@ -122,7 +112,7 @@ struct PixelWindow {
                     cvalues.push_back(buffers[j].rgbSum[i]);
                     // per channel management (but weight can be different depending of median buffer)
                     weightsSum.push_back(buffers[j].weightSum);
-                    csplats.push_back(buffers[j].splatRGB[i]);
+                    csplats.push_back(buffers[j].splatRGB[i]);             
                 }
 
                 // temp storage in order to sort values
@@ -135,22 +125,22 @@ struct PixelWindow {
                 // compute median from means
                 // find associated weightsum index and use it
                 // Classical MON
-                if (windowSize % 2 == 1){
-                    unsigned unsortedIndex = sortedIndices[int(windowSize/2)];
+                // if (windowSize % 2 == 1){
+                unsigned unsortedIndex = sortedIndices[int(windowSize/2)];
 
-                    median = cvalues[unsortedIndex];
-                    medianWeight = weightsSum[unsortedIndex];
-                    medianSplat = csplats[unsortedIndex];
-                }
-                else{
-                    int k_mean = int(windowSize/2);
-                    unsigned firstIndex = sortedIndices[k_mean - 1];
-                    unsigned secondIndex = sortedIndices[k_mean];
+                median = cvalues[unsortedIndex];
+                medianWeight = weightsSum[unsortedIndex];
+                medianSplat = csplats[unsortedIndex];
+                // }
+                // else{
+                //     int k_mean = int(windowSize/2);
+                //     unsigned firstIndex = sortedIndices[k_mean - 1];
+                //     unsigned secondIndex = sortedIndices[k_mean];
 
-                    median = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
-                    medianWeight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-                    medianSplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
-                }
+                //     median = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
+                //     medianWeight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+                //     medianSplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
+                // }
 
                 // store channel information
                 currentWeight += medianWeight;
@@ -159,12 +149,7 @@ struct PixelWindow {
             }
         }
 
-        weightSum += currentWeight / 3;
-
-        // then compute new mean
-        for (int i = 0; i < 3; i++) {
-            mean[i] = allrgbSum[i]  / allWeightSum;
-        }
+        weightSum += (currentWeight / 3);
 
         // clear now the buffers data for the sliding window
         for (int i = 0; i < windowSize; i++) {
@@ -175,13 +160,37 @@ struct PixelWindow {
     // after computing stdScene, this method will be call to adapt windowSize in Film
     void updateSize(const Float &stdScene) {
 
-        Float stdRatio = currentStd / stdScene;
+        // std::cout << "Start updating window size" << std::endl;
+        // Float stdSum = 0.;
 
-        if (stdRatio < 1) {
-            windowSize = 1;
-        } else {
-            windowSize = 2 * std::floor(std::log(stdRatio) + 1) + 1;
-        }
+        // // std::cout << "Update current pixelWindow (" << windowSize << ")" << std::endl;
+
+        // // compute current mean and std
+        // for (int i = 0; i < 3; i++) {
+        //     mean[i] = allrgbSum[i]  / nsamples;
+        //     stdSum += (squaredSum[i] / nsamples) - (mean[i] * mean[i]);
+        // }
+
+        // // divide per number of chanels and get current std
+        // currentStd = std::sqrt(stdSum / 3);
+
+        // Float stdRatio = currentStd / stdScene; 
+
+        // if (stdRatio < 1.) {
+        //     windowSize = 1;
+        // } else {
+        //     windowSize = 2 * (std::floor(std::log2(stdRatio)) + 1) + 1;
+        // }
+
+        // // if (windowSize < 0) {
+        // //     std::cout << currentStd << " vs " << stdScene << std::endl;
+        // //     std::cout << "Ratio is " << stdRatio << " => wsize " << windowSize << std::endl;
+        // // }
+        // // // TODO : check why windowSize is sometimes negative...
+        // if (windowSize > maxnbuffers || windowSize < 1)
+        //     windowSize = maxnbuffers;
+
+        windowSize = 3;
     }
 };
 

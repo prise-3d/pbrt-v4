@@ -312,6 +312,7 @@ class RGBFilm : public FilmBase {
         squaredSum[1] += (rgb[1] * rgb[1]);
         squaredSum[2] += (rgb[2] * rgb[2]);
 
+        nsamples += 1;
         weightSum += weight;
 
         // add sample to current buffer with weight
@@ -338,12 +339,12 @@ class RGBFilm : public FilmBase {
         if (pixelWindow.index >= pixelWindow.windowSize) {
             pixelWindow.index = 0;
             
-            // update pixelWindow with median value and get current std value
+            // update pixelWindow with median value
             pixelWindow.update();
 
             // update windowSize
-            pixelWindow.updateSize(ComputeStd());
-
+            pixelWindow.updateSize(currentStd);
+    
             // std::cout << "Window size for " << pFilm << " is now " << pixelWindow.windowSize << std::endl;
         }
     }
@@ -376,25 +377,26 @@ class RGBFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    Float ComputeStd() {
+    void ComputeStd() {
         
         Float stdSum = 0;
 
         // ParallelFor2D(pixelBounds, [&](Point2i p) {
             
-        //     stdSum += pixels[p].currentSum;
+        //     stdSum += pixels[p].currentStd;
         // });
 
-        // return stdSum / (resolution.x * resolution.y);
+        // return stdSum / (fullResolution.x * fullResolution.y);
 
-        // compute current mean and std
+        // // compute current mean and std
         for (int i = 0; i < 3; i++) {
-            Float mean = rgbSum[i] / weightSum;
-            stdSum += (squaredSum[i] / weightSum) - (mean * mean);
+            Float mean = rgbSum[i] / nsamples;
+            stdSum += (squaredSum[i] / nsamples) - (mean * mean);
         }
 
         // divide per number of chanels and get current film std
-        return std::sqrt(stdSum / 3);;
+        currentStd = std::sqrt(stdSum / 3);
+        // std::cout << "Scene std is " << currentStd << " with " << nsamples << std::endl;
     }
 
   private:
@@ -412,6 +414,8 @@ class RGBFilm : public FilmBase {
     double rgbSum[3] = {0., 0., 0.};
     double squaredSum[3] = {0., 0., 0.};
     double weightSum = 0;
+    Float currentStd = 0;
+    int nsamples = 0;
 
     const RGBColorSpace *colorSpace;
     Float maxComponentValue;
@@ -475,8 +479,8 @@ class GBufferFilm : public FilmBase {
     }
 
     PBRT_CPU_GPU
-    Float ComputeStd() {
-        return 0.;
+    void ComputeStd() {
+        // return 0.;
     }
 
     void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
@@ -557,7 +561,7 @@ inline bool Film::UsesVisibleSurface() const {
 
 // P3D update
 PBRT_CPU_GPU
-inline Float Film::ComputeStd() {
+inline void Film::ComputeStd() {
     auto std = [&](auto ptr) { return ptr->ComputeStd(); };
     return Dispatch(std);
 }
