@@ -214,7 +214,12 @@ class FilmBase {
 
     // P3D Updates
     void SetFilename(std::string filename) { this->filename = filename; }
-    
+
+    // P3D Updates 
+    // compute std of current film
+    void computeStd() { }
+
+
     PBRT_CPU_GPU
     SampledWavelengths SampleWavelengths(Float u) const {
         return SampledWavelengths::SampleXYZ(u);
@@ -246,8 +251,8 @@ class RGBFilm : public FilmBase {
         ParallelFor2D(pixelBounds, [&](Point2i p) {
             for (int i = 0; i < pixels[p].windowSize; i++) {
                 pixels[p].buffers[i].Clear();
-                pixels[p].varianceEstimator = VarianceEstimator<Float>();
             }
+            pixels[p].varianceEstimator = VarianceEstimator<Float>();
         }); 
     };
 
@@ -297,29 +302,50 @@ class RGBFilm : public FilmBase {
 
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
-        
-        // add sample value inside current package
+
+        // add to current Film
+        rgbSum[0] += rgb[0];
+        rgbSum[1] += rgb[1];
+        rgbSum[2] += rgb[2];
+
+        squaredSum[0] += (rgb[0] * rgb[0]);
+        squaredSum[1] += (rgb[1] * rgb[1]);
+        squaredSum[2] += (rgb[2] * rgb[2]);
+
+        weightSum += weight;
+
+        // add sample to current buffer with weight
         pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
         pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
         pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
 
-        // add of squared sum of new pixel value
-        pixelWindow.buffers[pixelWindow.index].squaredSum[0] += (rgb[0] * rgb[0]);
-        pixelWindow.buffers[pixelWindow.index].squaredSum[1] += (rgb[1] * rgb[1]);
-        pixelWindow.buffers[pixelWindow.index].squaredSum[2] += (rgb[2] * rgb[2]);
-
-        // add of cubic sum of new pixel value
-        pixelWindow.buffers[pixelWindow.index].cubicSum[0] += (rgb[0] * rgb[0] * rgb[0]);
-        pixelWindow.buffers[pixelWindow.index].cubicSum[1] += (rgb[1] * rgb[1] * rgb[1]);
-        pixelWindow.buffers[pixelWindow.index].cubicSum[2] += (rgb[2] * rgb[2] * rgb[2]);
-
         pixelWindow.buffers[pixelWindow.index].weightSum += weight;
+       
+        // Keep all information about samples
+        pixelWindow.allrgbSum[0] += rgb[0];
+        pixelWindow.allrgbSum[1] += rgb[1];
+        pixelWindow.allrgbSum[2] += rgb[2];
+
+        pixelWindow.squaredSum[0] += (rgb[0] * rgb[0]);
+        pixelWindow.squaredSum[1] += (rgb[1] * rgb[1]);
+        pixelWindow.squaredSum[2] += (rgb[2] * rgb[2]);
+
+        pixelWindow.allWeightSum += weight;
 
         pixelWindow.index += 1;
         pixelWindow.nsamples += 1;
 
-        if (pixelWindow.index >= pixelWindow.windowSize)
+        if (pixelWindow.index >= pixelWindow.windowSize) {
             pixelWindow.index = 0;
+            
+            // update pixelWindow with median value and get current std value
+            pixelWindow.update();
+
+            // update windowSize
+            pixelWindow.updateSize(ComputeStd());
+
+            // std::cout << "Window size for " << pFilm << " is now " << pixelWindow.windowSize << std::endl;
+        }
     }
 
     PBRT_CPU_GPU
@@ -349,6 +375,28 @@ class RGBFilm : public FilmBase {
         return outputRGBFromSensorRGB * sensorRGB;
     }
 
+    PBRT_CPU_GPU
+    Float ComputeStd() {
+        
+        Float stdSum = 0;
+
+        // ParallelFor2D(pixelBounds, [&](Point2i p) {
+            
+        //     stdSum += pixels[p].currentSum;
+        // });
+
+        // return stdSum / (resolution.x * resolution.y);
+
+        // compute current mean and std
+        for (int i = 0; i < 3; i++) {
+            Float mean = rgbSum[i] / weightSum;
+            stdSum += (squaredSum[i] / weightSum) - (mean * mean);
+        }
+
+        // divide per number of chanels and get current film std
+        return std::sqrt(stdSum / 3);;
+    }
+
   private:
     // RGBFilm::Pixel Definition
     // struct Pixel {
@@ -361,6 +409,10 @@ class RGBFilm : public FilmBase {
 
 
     // RGBFilm Private Members
+    double rgbSum[3] = {0., 0., 0.};
+    double squaredSum[3] = {0., 0., 0.};
+    double weightSum = 0;
+
     const RGBColorSpace *colorSpace;
     Float maxComponentValue;
     bool writeFP16;
@@ -420,6 +472,11 @@ class GBufferFilm : public FilmBase {
         rgb = outputRGBFromSensorRGB * rgb;
 
         return rgb;
+    }
+
+    PBRT_CPU_GPU
+    Float ComputeStd() {
+        return 0.;
     }
 
     void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
@@ -497,6 +554,14 @@ inline bool Film::UsesVisibleSurface() const {
     auto uses = [&](auto ptr) { return ptr->UsesVisibleSurface(); };
     return Dispatch(uses);
 }
+
+// P3D update
+PBRT_CPU_GPU
+inline Float Film::ComputeStd() {
+    auto std = [&](auto ptr) { return ptr->ComputeStd(); };
+    return Dispatch(std);
+}
+
 
 PBRT_CPU_GPU
 inline RGB Film::GetPixelRGB(const Point2i &p, Float splatScale) const {

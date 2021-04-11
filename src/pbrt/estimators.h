@@ -35,17 +35,16 @@
 
 namespace pbrt {
 
-// P3D update  mon parameter (if value of 1, no kmon use, hence classical mean)
-const int nbuffers = 1;
+// P3D update : 17 as suggested by Jung
+const int maxnbuffers = 17;
 
 // Need to externalise PixelWindow declaration for RGBFilm
 // P3D Updates
 struct PixelBuffer {
     PixelBuffer() = default;
 
+    // here we store the rgbSum of pixel
     double rgbSum[3] = {0., 0., 0.};
-    double squaredSum[3] = {0., 0., 0.};
-    double cubicSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
     double weightSum = 0.;
 
@@ -53,8 +52,6 @@ struct PixelBuffer {
 
         for (int i = 0; i < 3; i++) {
             rgbSum[i] = 0.;
-            squaredSum[i] = 0.;
-            cubicSum[i] = 0.;
             splatRGB[i] = 0.;
         }
 
@@ -66,13 +63,126 @@ struct PixelBuffer {
 struct PixelWindow {
     PixelWindow() = default;
 
-    PixelBuffer buffers[nbuffers];
+    PixelBuffer buffers[maxnbuffers];
     VarianceEstimator<Float> varianceEstimator;
 
-    int windowSize = nbuffers; // number of buffers clusters
+    int windowSize = maxnbuffers; // number of buffers clusters
     int index = 0; // keep track of index used
-    int nsamples = 0; // keep track of nsamples;
-    bool filled = false;
+    int nsamples = 0; // keep track of real added nsamples;
+    bool medianUse = false; // set if median is used or not
+    double rgbSum[3] = {0., 0., 0.}; // store final expected sample using median
+    double allrgbSum[3] = {0., 0., 0.}; // store final expected sample using median
+    double squaredSum[3] = {0., 0., 0.}; // keep track of current squared sum values of all samples
+    double mean[3] = {0., 0., 0.}; // keep track of current mean value with all samples (need to compute every `windowSize`)
+    double currentStd = 0.;
+
+    double weightSum = 0;
+    double allWeightSum = 0;
+    AtomicDouble splatRGB[3];
+
+    /**
+    *   Update current std value based on last encountered samples
+    *   Update the current median expected value
+    *   Clear each temp `windowSize` buffers for median computation
+    */
+    void update() {
+
+        Float stdSum = 0.;
+
+        // compute current mean and std
+        for (int i = 0; i < 3; i++) {
+            stdSum += (squaredSum[i] / allWeightSum) - (mean[i] * mean[i]);
+        }
+
+        // divide per number of chanels and get current std
+        currentStd = std::sqrt(stdSum / 3);
+
+        // compute here the median of the current buffers
+        Float currentWeight = 0.;
+
+        if (windowSize == 1) {
+            // store channel information
+            for (int i = 0; i < 3; i++) {
+                currentWeight += buffers[0].weightSum;
+                rgbSum[i] += buffers[0].rgbSum[i];
+                splatRGB[i] = splatRGB[i] + buffers[0].splatRGB[i];
+            }
+        } 
+        else
+        {
+            // based on channel numbers
+            for (int i = 0; i < 3; i++) {
+
+                // store channel information
+                pstd::vector<Float> cvalues;
+                pstd::vector<Float> weightsSum;
+                pstd::vector<double> csplats;
+
+                for (int j = 0; j < windowSize; j++) {
+                    cvalues.push_back(buffers[j].rgbSum[i]);
+                    // per channel management (but weight can be different depending of median buffer)
+                    weightsSum.push_back(buffers[j].weightSum);
+                    csplats.push_back(buffers[j].splatRGB[i]);
+                }
+
+                // temp storage in order to sort values
+                pstd::vector<Float> means(cvalues);
+                pstd::vector<int> sortedIndices = means.sort();
+
+                Float medianWeight, median = 0.;
+                double medianSplat = 0;
+
+                // compute median from means
+                // find associated weightsum index and use it
+                // Classical MON
+                if (windowSize % 2 == 1){
+                    unsigned unsortedIndex = sortedIndices[int(windowSize/2)];
+
+                    median = cvalues[unsortedIndex];
+                    medianWeight = weightsSum[unsortedIndex];
+                    medianSplat = csplats[unsortedIndex];
+                }
+                else{
+                    int k_mean = int(windowSize/2);
+                    unsigned firstIndex = sortedIndices[k_mean - 1];
+                    unsigned secondIndex = sortedIndices[k_mean];
+
+                    median = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
+                    medianWeight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+                    medianSplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
+                }
+
+                // store channel information
+                currentWeight += medianWeight;
+                rgbSum[i] += median;
+                splatRGB[i] = splatRGB[i] + medianSplat;
+            }
+        }
+
+        weightSum += currentWeight / 3;
+
+        // then compute new mean
+        for (int i = 0; i < 3; i++) {
+            mean[i] = allrgbSum[i]  / allWeightSum;
+        }
+
+        // clear now the buffers data for the sliding window
+        for (int i = 0; i < windowSize; i++) {
+            buffers[i].Clear();
+        }
+    }
+    // update the enable window size of the estimator dynamically
+    // after computing stdScene, this method will be call to adapt windowSize in Film
+    void updateSize(const Float &stdScene) {
+
+        Float stdRatio = currentStd / stdScene;
+
+        if (stdRatio < 1) {
+            windowSize = 1;
+        } else {
+            windowSize = 2 * std::floor(std::log(stdRatio) + 1) + 1;
+        }
+    }
 };
 
 // Base Estimator class
@@ -96,212 +206,16 @@ class Estimator {
         std::string name;
 };
 
-// approximated Bayesian Median of Means Estimator class
-class ABMMEstimator : public Estimator {
+// Jung implemented estimator Estimator class
+class JungEstimator : public Estimator {
 
     public:
 
-        ABMMEstimator(const std::string &name) : Estimator(name) {}; 
+        JungEstimator(const std::string &name) : Estimator(name) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
 
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
-};
-
-// Mean Estimator class
-class MeanEstimator : public Estimator {
-
-    public:
-
-        MeanEstimator(const std::string &name) : Estimator(name) {}; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-};
-
-// MON Estimator class
-// Median of meaNs: use of median value from available mean buffers
-class MONEstimator : public Estimator {
-
-    public:
-
-        MONEstimator(const std::string &name) : Estimator(name) {}; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-};
-
-// AlphaMON Estimator class
-// Median of meaNs: use of median value from available mean buffers
-// use of an alpha criterion for convergence
-class AlphaMONEstimator : public Estimator {
-
-    public:
-
-        AlphaMONEstimator(const std::string &name) : Estimator(name) {}; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
-};
-
-// AlphaDistMON Estimator class
-// Median of meaNs: use of median value from available mean buffers
-// use of an alpha criterion for convergence using whole package
-class AlphaDistMONEstimator : public Estimator {
-
-    public:
-
-        AlphaDistMONEstimator(const std::string &name) : Estimator(name) {}; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const;
-};
-
-// GiniMON Estimator class
-// Median of meaNs: use of median value from available mean buffers
-// Use of Gini in order to well use \alpha criterion
-class GiniDistMONEstimator : public Estimator {
-
-    public:
-
-        GiniDistMONEstimator(const std::string &name) : Estimator(name) {
-
-            // default alpha value
-            alphaDistMoNEstimator = std::make_unique<AlphaDistMONEstimator>("admon");
-        }; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-    protected:
-        std::unique_ptr<AlphaDistMONEstimator> alphaDistMoNEstimator;
-
-        PBRT_CPU_GPU
-        Float getGini(pstd::vector<Float> values) const;
-};
-
-class GiniDistPartialMONEstimator : public GiniDistMONEstimator {
-
-    public:
-
-        GiniDistPartialMONEstimator(const std::string &name) : GiniDistMONEstimator(name) {};
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-};
-
-// GiniMON Estimator class
-// Median of meaNs: use of median value from available mean buffers
-// Use of Gini in order to well use \alpha criterion
-class GiniMONEstimator : public Estimator {
-
-    public:
-
-        GiniMONEstimator(const std::string &name) : Estimator(name) {
-
-            // default alpha value
-            alphaMoNEstimator = std::make_unique<AlphaMONEstimator>("amon");
-        }; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-    protected:
-        std::unique_ptr<AlphaMONEstimator> alphaMoNEstimator;
-
-        PBRT_CPU_GPU
-        Float getEntropy(pstd::vector<Float> values) const;
-
-        PBRT_CPU_GPU
-        Float getGini(pstd::vector<Float> values) const;
-};
-
-// GiniaBMM Estimator class
-// Median of meaNs: use of median value from available mean buffers
-// Use of Gini in order to well use \alpha criterion
-class GABMMEstimator : public GiniMONEstimator {
-
-    public:
-
-        GABMMEstimator(const std::string &name) : GiniMONEstimator(name) {
-
-            // default alpha value
-            aBMMEstimator = std::make_unique<ABMMEstimator>("abmm");
-        }; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-    protected:
-        std::unique_ptr<ABMMEstimator> aBMMEstimator;
-};
-
-class GiniBinaryMONEstimator : public GiniMONEstimator {
-
-    public:
-
-        GiniBinaryMONEstimator(const std::string &name) : GiniMONEstimator(name) {};
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-};
-
-class GiniPartialMONEstimator : public GiniMONEstimator {
-
-    public:
-
-        GiniPartialMONEstimator(const std::string &name) : GiniMONEstimator(name) {};
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-};
-
-
-// PakMON Estimation class
-// Based of MON Estimator but with confidence criteria of median's neighborhood buffers
-class PakMONEstimator : public Estimator {
-
-    public:
-
-        PakMONEstimator(const std::string &name) : Estimator(name) {}; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-    private:
-        PBRT_CPU_GPU
-        Float getEntropy(pstd::vector<Float> values) const;
-
-};
-
-// Mean or MON estimator
-// Based on Confidence Interval criteria of pixel
-// Final estimator is chosen (mean or MON)
-class MeanOrMONEstimator : public Estimator {
-
-    public:
-
-        MeanOrMONEstimator(const std::string &name) : Estimator(name) {
-            meanEstimator = std::make_unique<MeanEstimator>("mean");
-            monEstimator = std::make_unique<MONEstimator>("mon");
-        }; 
-
-        PBRT_CPU_GPU
-        void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;
-
-    private:
-        std::unique_ptr<MeanEstimator> meanEstimator;
-        std::unique_ptr<MONEstimator> monEstimator;
 };
 
 }  // namespace pbrt
