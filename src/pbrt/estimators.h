@@ -82,6 +82,7 @@ struct PixelWindow {
 
     // use for sort values
     int indices[maxnbuffers];
+    Float sortedValues[maxnbuffers];
     Float cvalues[maxnbuffers];
     Float weightsSum[maxnbuffers];
     double csplats[maxnbuffers];

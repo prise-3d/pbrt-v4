@@ -355,6 +355,7 @@ class RGBFilm : public FilmBase {
                     // store channel information in available temp buffer
                     for (int j = 0; j < pixelWindow.windowSize; j++) {
                         pixelWindow.cvalues[i] = pixelWindow.buffers[j].rgbSum[i];
+                        pixelWindow.sortedValues[i] = pixelWindow.buffers[j].rgbSum[i];
                         // per channel management (but weight can be different depending of median buffer)
                         pixelWindow.weightsSum[i] = pixelWindow.buffers[j].weightSum;
                         pixelWindow.csplats[i] = pixelWindow.buffers[j].splatRGB[i];  
@@ -362,9 +363,30 @@ class RGBFilm : public FilmBase {
                     }
 
                     // Need now to sort data
-                    std::sort(std::begin(pixelWindow.indices), std::begin(pixelWindow.indices) + pixelWindow.windowSize, 
-                        [&](int i, int j){return pixelWindow.cvalues[i] < pixelWindow.cvalues[j];
-                    });
+                    //std::sort(std::begin(pixelWindow.indices), std::begin(pixelWindow.indices) + pixelWindow.windowSize, 
+                    //    [&](int i, int j){return pixelWindow.cvalues[i] < pixelWindow.cvalues[j];
+                    //});
+
+                    int j, k, min, tempI;
+                    Float temp;
+                    int n = pixelWindow.size;
+
+                    for (j = 0; j < n - 1; j++) {
+                        min = j;
+                        for (k = j + 1; k < n; k++)
+                            if (pixelWindow.sortedValues[k] < pixelWindow.sortedValues[min])
+                                min = k;
+
+                        temp = pixelWindow.sortedValues[j];
+                        pixelWindow.sortedValues[j] = pixelWindow.sortedValues[min];
+                        pixelWindow.sortedValues[min] = temp;
+
+                        tempI = pixelWindow.indices[j];
+                        pixelWindow.indices[j] = pixelWindow.indices[min];
+                        pixelWindow.indices[min] = tempI;
+                    }
+
+                    // need to find median value of pixelWindow.cavlues
 
                     // Float medianWeight, median = 0.;
                     // double medianSplat = 0;
@@ -373,11 +395,11 @@ class RGBFilm : public FilmBase {
                     // // find associated weightsum index and use it
                     // // Classical MON
                     // // if (windowSize % 2 == 1){
-                    // unsigned unsortedIndex = sortedIndices[int(windowSize/2)];
+                    unsigned unsortedIndex = pixelWindow.indices[int(windowSize/2)];
 
-                    // median = cvalues[unsortedIndex];
-                    // medianWeight = weightsSum[unsortedIndex];
-                    // medianSplat = csplats[unsortedIndex];
+                    median = pixelWindow.cvalues[unsortedIndex];
+                    medianWeight = pixelWindow.weightsSum[unsortedIndex];
+                    medianSplat = pixelWindow.csplats[unsortedIndex];
                     // // }
                     // // else{
                     // //     int k_mean = int(windowSize/2);
@@ -390,9 +412,9 @@ class RGBFilm : public FilmBase {
                     // // }
 
                     // // store channel information
-                    // currentWeight += medianWeight;
-                    // rgbSum[i] += median;
-                    // splatRGB[i] = splatRGB[i] + medianSplat;
+                    currentWeight += medianWeight;
+                    pixelWindow.rgbSum[i] += median;
+                    pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + medianSplat;
                 }
             }
 
