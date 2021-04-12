@@ -369,7 +369,7 @@ class RGBFilm : public FilmBase {
 
                     int j, k, min, tempI;
                     Float temp;
-                    int n = pixelWindow.size;
+                    int n = pixelWindow.windowSize;
 
                     for (j = 0; j < n - 1; j++) {
                         min = j;
@@ -395,7 +395,7 @@ class RGBFilm : public FilmBase {
                     // // find associated weightsum index and use it
                     // // Classical MON
                     // // if (windowSize % 2 == 1){
-                    unsigned unsortedIndex = pixelWindow.indices[int(windowSize/2)];
+                    unsigned unsortedIndex = pixelWindow.indices[int(pixelWindow.windowSize/2)];
 
                     // median = pixelWindow.cvalues[unsortedIndex];
                     // medianWeight = pixelWindow.weightsSum[unsortedIndex];
