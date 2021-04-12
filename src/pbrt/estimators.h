@@ -80,6 +80,12 @@ struct PixelWindow {
     double allWeightSum = 0;
     AtomicDouble splatRGB[3];
 
+    // use for sort values
+    int indices[maxnbuffers];
+    Float cvalues[maxnbuffers];
+    Float weightsSum[maxnbuffers];
+    double csplats[maxnbuffers];
+
     /**
     *   Update current std value based on last encountered samples
     *   Update the current median expected value
@@ -126,7 +132,8 @@ struct PixelWindow {
                 // find associated weightsum index and use it
                 // Classical MON
                 // if (windowSize % 2 == 1){
-                unsigned unsortedIndex = sortedIndices[int(windowSize/2)];
+                int medianIndex = int(windowSize/2);
+                unsigned unsortedIndex = sortedIndices[medianIndex];
 
                 median = cvalues[unsortedIndex];
                 medianWeight = weightsSum[unsortedIndex];
@@ -190,7 +197,7 @@ struct PixelWindow {
         // if (windowSize > maxnbuffers || windowSize < 1)
         //     windowSize = maxnbuffers;
 
-        windowSize = 3;
+        windowSize = 7;
     }
 };
 

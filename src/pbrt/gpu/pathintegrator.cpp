@@ -621,7 +621,6 @@ void GPURender(ParsedScene &scene) {
 
         // TODO : add j loop for rendering each 1 sample the whole image
         // Then update the std of the whole image
-
         for (int j = 0; j < spp; j++){
 
             // if (*Options->independent)
@@ -629,6 +628,7 @@ void GPURender(ParsedScene &scene) {
             // else
             std::cout << "Rendering of " << i * spp + j << " to " << i * spp + j + 1 << std::endl;
             integrator->Render(i * spp + j, i * spp + j + 1);
+            integrator->film.ComputeStd();
         }
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());

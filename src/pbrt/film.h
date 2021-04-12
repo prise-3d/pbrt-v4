@@ -337,15 +337,104 @@ class RGBFilm : public FilmBase {
         pixelWindow.nsamples += 1;
 
         if (pixelWindow.index >= pixelWindow.windowSize) {
-            pixelWindow.index = 0;
-            
-            // update pixelWindow with median value
-            pixelWindow.update();
+            Float currentWeight = 0.;
 
-            // update windowSize
-            pixelWindow.updateSize(currentStd);
-    
-            // std::cout << "Window size for " << pFilm << " is now " << pixelWindow.windowSize << std::endl;
+            if (pixelWindow.windowSize == 1) {
+                // store channel information
+                for (int i = 0; i < 3; i++) {
+                    currentWeight += pixelWindow.buffers[0].weightSum;
+                    pixelWindow.rgbSum[i] += pixelWindow.buffers[0].rgbSum[i];
+                    pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.buffers[0].splatRGB[i];
+                }
+            } 
+            else
+            {
+                // based on channel numbers
+                for (int i = 0; i < 3; i++) {
+
+                    // store channel information in available temp buffer
+                    for (int j = 0; j < pixelWindow.windowSize; j++) {
+                        pixelWindow.cvalues[i] = pixelWindow.buffers[j].rgbSum[i];
+                        // per channel management (but weight can be different depending of median buffer)
+                        pixelWindow.weightsSum[i] = pixelWindow.buffers[j].weightSum;
+                        pixelWindow.csplats[i] = pixelWindow.buffers[j].splatRGB[i];  
+                        pixelWindow.indices[j] = j; // restore indices
+                    }
+
+                    // Need now to sort data
+                    std::sort(std::begin(pixelWindow.indices), std::begin(pixelWindow.indices) + pixelWindow.windowSize, 
+                        [&](int i, int j){return pixelWindow.cvalues[i] < pixelWindow.cvalues[j];
+                    });
+
+                    // Float medianWeight, median = 0.;
+                    // double medianSplat = 0;
+
+                    // // compute median from means
+                    // // find associated weightsum index and use it
+                    // // Classical MON
+                    // // if (windowSize % 2 == 1){
+                    // unsigned unsortedIndex = sortedIndices[int(windowSize/2)];
+
+                    // median = cvalues[unsortedIndex];
+                    // medianWeight = weightsSum[unsortedIndex];
+                    // medianSplat = csplats[unsortedIndex];
+                    // // }
+                    // // else{
+                    // //     int k_mean = int(windowSize/2);
+                    // //     unsigned firstIndex = sortedIndices[k_mean - 1];
+                    // //     unsigned secondIndex = sortedIndices[k_mean];
+
+                    // //     median = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
+                    // //     medianWeight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
+                    // //     medianSplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
+                    // // }
+
+                    // // store channel information
+                    // currentWeight += medianWeight;
+                    // rgbSum[i] += median;
+                    // splatRGB[i] = splatRGB[i] + medianSplat;
+                }
+            }
+
+            pixelWindow.weightSum += (currentWeight / 3);
+
+            // // clear now the buffers data for the sliding window
+            for (int i = 0; i < pixelWindow.windowSize; i++) {
+
+                for (int j = 0; j < 3; j++) {
+                    pixelWindow.buffers[i].rgbSum[j] = 0.;
+                    pixelWindow.buffers[i].splatRGB[j] = 0.;
+                }
+
+                pixelWindow.buffers[i].weightSum = 0.;
+            }
+
+            // TODO : add dynamic windowSize
+            pixelWindow.windowSize = 1;
+            // Float stdSum = 0.;
+
+            // // std::cout << "Update current pixelWindow (" << windowSize << ")" << std::endl;
+
+            // // compute current mean and std
+            // for (int i = 0; i < 3; i++) {
+            //     mean[i] = allrgbSum[i]  / nsamples;
+            //     stdSum += (squaredSum[i] / nsamples) - (mean[i] * mean[i]);
+            // }
+
+            // // divide per number of chanels and get current std
+            // currentStd = std::sqrt(stdSum / 3);
+
+            // Float stdRatio = currentStd / stdScene; 
+
+            // if (stdRatio < 1.) {
+            //     windowSize = 1;
+            // } else {
+            //     windowSize = 2 * (std::floor(std::log2(stdRatio)) + 1) + 1;
+            // }
+
+
+            // reset index to sliding over WindowSize
+            pixelWindow.index = 0;
         }
     }
 
