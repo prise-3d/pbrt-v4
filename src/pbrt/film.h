@@ -351,14 +351,17 @@ class RGBFilm : public FilmBase {
             {
                 // based on channel numbers
                 for (int i = 0; i < 3; i++) {
-
+                    
+                    // std::cout << "Current values are:" << std::endl;
                     // store channel information in available temp buffer
                     for (int j = 0; j < pixelWindow.windowSize; j++) {
-                        pixelWindow.cvalues[i] = pixelWindow.buffers[j].rgbSum[i];
-                        pixelWindow.sortedValues[i] = pixelWindow.buffers[j].rgbSum[i];
+
+                        // std::cout << "-- Channel (" << i << "), b[" << j << "] : " << pixelWindow.buffers[j].rgbSum[i] << std::endl; 
+                        pixelWindow.cvalues[j] = pixelWindow.buffers[j].rgbSum[i];
+                        pixelWindow.sortedValues[j] = pixelWindow.buffers[j].rgbSum[i];
                         // per channel management (but weight can be different depending of median buffer)
-                        pixelWindow.weightsSum[i] = pixelWindow.buffers[j].weightSum;
-                        pixelWindow.csplats[i] = pixelWindow.buffers[j].splatRGB[i];  
+                        pixelWindow.weightsSum[j] = pixelWindow.buffers[j].weightSum;
+                        pixelWindow.csplats[j] = pixelWindow.buffers[j].splatRGB[i];  
                         pixelWindow.indices[j] = j; // restore indices
                     }
 
@@ -367,24 +370,32 @@ class RGBFilm : public FilmBase {
                     //    [&](int i, int j){return pixelWindow.cvalues[i] < pixelWindow.cvalues[j];
                     //});
 
-                    int j, k, min, tempI;
-                    Float temp;
+                    int jj, kk, min, tempI;
+                    double temp;
                     int n = pixelWindow.windowSize;
 
-                    for (j = 0; j < n - 1; j++) {
-                        min = j;
-                        for (k = j + 1; k < n; k++)
-                            if (pixelWindow.sortedValues[k] < pixelWindow.sortedValues[min])
-                                min = k;
+                    for (jj = 0; jj < n - 1; jj++) {
+                        min = jj;
+                        for (kk = jj + 1; kk < n; kk++)
+                            if (pixelWindow.sortedValues[kk] < pixelWindow.sortedValues[min])
+                                min = kk;
 
-                        temp = pixelWindow.sortedValues[j];
-                        pixelWindow.sortedValues[j] = pixelWindow.sortedValues[min];
+                        temp = pixelWindow.sortedValues[jj];
+                        pixelWindow.sortedValues[jj] = pixelWindow.sortedValues[min];
                         pixelWindow.sortedValues[min] = temp;
 
-                        tempI = pixelWindow.indices[j];
-                        pixelWindow.indices[j] = pixelWindow.indices[min];
+                        tempI = pixelWindow.indices[jj];
+                        pixelWindow.indices[jj] = pixelWindow.indices[min];
                         pixelWindow.indices[min] = tempI;
                     }
+
+                    // std::cout << "Sorted values are:" << std::endl;
+                    // for (int j = 0; j < pixelWindow.windowSize; j++) {
+                    //     std::cout << "-- Channel (" << i << "), b[" << pixelWindow.indices[j] << "] : " << pixelWindow.sortedValues[j] << std::endl;
+                    // }
+
+                    // std::cout << "Median index :" << pixelWindow.indices[int(pixelWindow.windowSize/2)] << std::endl;
+                    // std::cout << "Median value :" << pixelWindow.cvalues[int(pixelWindow.windowSize/2)] << std::endl;
 
                     // need to find median value of pixelWindow.cavlues
 
