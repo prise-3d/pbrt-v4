@@ -432,28 +432,27 @@ class RGBFilm : public FilmBase {
             }
 
             // TODO : add dynamic windowSize
-            pixelWindow.windowSize = 1;
-            // Float stdSum = 0.;
+            // pixelWindow.windowSize = 1;
+            Float stdSum = 0.;
 
             // // std::cout << "Update current pixelWindow (" << windowSize << ")" << std::endl;
 
             // // compute current mean and std
-            // for (int i = 0; i < 3; i++) {
-            //     mean[i] = allrgbSum[i]  / nsamples;
-            //     stdSum += (squaredSum[i] / nsamples) - (mean[i] * mean[i]);
-            // }
+            for (int i = 0; i < 3; i++) {
+                pixelWindow.mean[i] = pixelWindow.allrgbSum[i]  / nsamples;
+                stdSum += (pixelWindow.squaredSum[i] / nsamples) - (pixelWindow.mean[i] * pixelWindow.mean[i]);
+            }
 
             // // divide per number of chanels and get current std
-            // currentStd = std::sqrt(stdSum / 3);
+            pixelWindow.std = std::sqrt(stdSum / 3);
 
-            // Float stdRatio = currentStd / stdScene; 
+            Float stdRatio = pixelWindow.std / currentStd; 
 
-            // if (stdRatio < 1.) {
-            //     windowSize = 1;
-            // } else {
-            //     windowSize = 2 * (std::floor(std::log2(stdRatio)) + 1) + 1;
-            // }
-
+            if (stdRatio < 1.) {
+                pixelWindow.windowSize = 1;
+            } else {
+                pixelWindow.windowSize = 2 * (std::floor(std::log2(stdRatio)) + 1) + 1;
+            }
 
             // reset index to sliding over WindowSize
             pixelWindow.index = 0;

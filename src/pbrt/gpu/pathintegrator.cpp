@@ -330,8 +330,6 @@ void GPUPathIntegrator::Render(int startSample, int endSample) {
         lastSampleIndex = firstSampleIndex + values[1];
     }
 
-    ProgressReporter progress(lastSampleIndex - firstSampleIndex, "Rendering",
-                              Options->quiet, true /* GPU */);
     for (int sampleIndex = firstSampleIndex; sampleIndex < lastSampleIndex;
          ++sampleIndex) {
         // Render image for sample _sampleIndex_
@@ -423,7 +421,7 @@ void GPUPathIntegrator::Render(int startSample, int endSample) {
                     });
         }
 
-        progress.Update();
+        // progress.Update();
     }
     progress.Done();
     GPUWait();
@@ -616,6 +614,9 @@ void GPURender(ParsedScene &scene) {
         // Render!
         Timer timer;
 
+        ProgressReporter progress(spp, "Rendering",
+                              Options->quiet, true /* GPU */);
+
         // P3D update depending of method
         int spp = integrator->sampler.SamplesPerPixel();
 
@@ -626,10 +627,12 @@ void GPURender(ParsedScene &scene) {
             // if (*Options->independent)
             //     integrator->Render(i * spp, (i + 1) * spp);
             // else
-            std::cout << "Rendering of " << i * spp + j << " to " << i * spp + j + 1 << std::endl;
+            // std::cout << "Rendering of " << i * spp + j << " to " << i * spp + j + 1 << std::endl;
             integrator->Render(i * spp + j, i * spp + j + 1);
             integrator->film.ComputeStd();
+            progress.Update();
         }
+        progress.Done();
 
         LOG_VERBOSE("Total rendering time: %.3f s", timer.ElapsedSeconds());
 
