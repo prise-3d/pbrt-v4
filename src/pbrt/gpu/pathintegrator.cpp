@@ -617,8 +617,7 @@ void GPURender(ParsedScene &scene) {
         // P3D update depending of method
         int spp = integrator->sampler.SamplesPerPixel();
 
-        ProgressReporter progress(spp, "Rendering",
-                        Options->quiet, true /* GPU */);
+        ProgressReporter progress(spp, "Rendering", *Options->quiet, true /* GPU */);
 
         // TODO : add j loop for rendering each 1 sample the whole image
         // Then update the std of the whole image
