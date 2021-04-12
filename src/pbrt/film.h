@@ -313,7 +313,7 @@ class RGBFilm : public FilmBase {
         squaredSum[2] += (rgb[2] * rgb[2]);
 
         nsamples += 1;
-        weightSum += weight;
+        sceneWeightSum += weight;
 
         // add sample to current buffer with weight
         pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
@@ -352,11 +352,11 @@ class RGBFilm : public FilmBase {
                 // based on channel numbers
                 for (int i = 0; i < 3; i++) {
                     
-                    // std::cout << "Current values are:" << std::endl;
+                    std::cout << "Current values are:" << std::endl;
                     // store channel information in available temp buffer
                     for (int j = 0; j < pixelWindow.windowSize; j++) {
 
-                        // std::cout << "-- Channel (" << i << "), b[" << j << "] : " << pixelWindow.buffers[j].rgbSum[i] << std::endl; 
+                        std::cout << "-- Channel (" << i << "), b[" << j << "] : " << pixelWindow.buffers[j].rgbSum[i] << std::endl; 
                         pixelWindow.cvalues[j] = pixelWindow.buffers[j].rgbSum[i];
                         pixelWindow.sortedValues[j] = pixelWindow.buffers[j].rgbSum[i];
                         // per channel management (but weight can be different depending of median buffer)
@@ -389,13 +389,13 @@ class RGBFilm : public FilmBase {
                         pixelWindow.indices[min] = tempI;
                     }
 
-                    // std::cout << "Sorted values are:" << std::endl;
-                    // for (int j = 0; j < pixelWindow.windowSize; j++) {
-                    //     std::cout << "-- Channel (" << i << "), b[" << pixelWindow.indices[j] << "] : " << pixelWindow.sortedValues[j] << std::endl;
-                    // }
+                    std::cout << "Sorted values are:" << std::endl;
+                    for (int j = 0; j < pixelWindow.windowSize; j++) {
+                        std::cout << "-- Channel (" << i << "), b[" << pixelWindow.indices[j] << "] : " << pixelWindow.sortedValues[j] << std::endl;
+                    }
 
-                    // std::cout << "Median index :" << pixelWindow.indices[int(pixelWindow.windowSize/2)] << std::endl;
-                    // std::cout << "Median value :" << pixelWindow.cvalues[int(pixelWindow.windowSize/2)] << std::endl;
+                    std::cout << "Median index :" << pixelWindow.indices[int(pixelWindow.windowSize/2)] << std::endl;
+                    std::cout << "Median value :" << pixelWindow.cvalues[int(pixelWindow.windowSize/2)] << std::endl;
 
                     // need to find median value of pixelWindow.cavlues
 
@@ -424,7 +424,7 @@ class RGBFilm : public FilmBase {
 
                     // // store channel information
                     currentWeight += pixelWindow.weightsSum[unsortedIndex];
-                    pixelWindow.rgbSum[i] += pixelWindow.cvalues[unsortedIndex];
+                    pixelWindow.rgbSum[i] += pixelWindow.cvalues[unsortedIndex] * pixelWindow.windowSize;
                     pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.csplats[unsortedIndex];
                 }
             }
@@ -538,7 +538,7 @@ class RGBFilm : public FilmBase {
     // RGBFilm Private Members
     double rgbSum[3] = {0., 0., 0.};
     double squaredSum[3] = {0., 0., 0.};
-    double weightSum = 0;
+    double sceneWeightSum = 0;
     Float currentStd = 0;
     int nsamples = 0;
 
