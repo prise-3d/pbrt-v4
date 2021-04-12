@@ -454,6 +454,10 @@ class RGBFilm : public FilmBase {
                 pixelWindow.windowSize = 2 * (std::floor(std::log2(stdRatio)) + 1) + 1;
             }
 
+            if (pixelWindow.windowSize > pbrt::maxnbuffers){
+                pixelWindow.windowSize = pbrt::maxnbuffers;
+            }
+
             // reset index to sliding over WindowSize
             pixelWindow.index = 0;
         }
