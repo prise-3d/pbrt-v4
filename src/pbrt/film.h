@@ -397,9 +397,9 @@ class RGBFilm : public FilmBase {
                     // // if (windowSize % 2 == 1){
                     unsigned unsortedIndex = pixelWindow.indices[int(windowSize/2)];
 
-                    median = pixelWindow.cvalues[unsortedIndex];
-                    medianWeight = pixelWindow.weightsSum[unsortedIndex];
-                    medianSplat = pixelWindow.csplats[unsortedIndex];
+                    // median = pixelWindow.cvalues[unsortedIndex];
+                    // medianWeight = pixelWindow.weightsSum[unsortedIndex];
+                    // medianSplat = pixelWindow.csplats[unsortedIndex];
                     // // }
                     // // else{
                     // //     int k_mean = int(windowSize/2);
@@ -412,9 +412,9 @@ class RGBFilm : public FilmBase {
                     // // }
 
                     // // store channel information
-                    currentWeight += medianWeight;
-                    pixelWindow.rgbSum[i] += median;
-                    pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + medianSplat;
+                    currentWeight += pixelWindow.weightsSum[unsortedIndex];
+                    pixelWindow.rgbSum[i] += pixelWindow.cvalues[unsortedIndex];
+                    pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.csplats[unsortedIndex];
                 }
             }
 
