@@ -423,7 +423,7 @@ void GPUPathIntegrator::Render(int startSample, int endSample) {
 
         // progress.Update();
     }
-    progress.Done();
+    // progress.Done();
     GPUWait();
     // Shut down display server thread, if active
     // Wait until rendering is all done before we start to shut down the
