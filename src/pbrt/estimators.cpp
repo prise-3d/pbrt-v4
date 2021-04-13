@@ -86,6 +86,7 @@ void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
         for (int i = 0; i < 3; i++) {
 
             pstd::vector<double> cvalues;
+            pstd::vector<double> csplats;
             pstd::vector<double> sortedValues;
             pstd::vector<int> indices;
             pstd::vector<double> weightsSum;
@@ -99,7 +100,8 @@ void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
                 sortedValues.push_back(pixelWindow.buffers[j].rgbSum[i]);
                 // per channel management (but weight can be different depending of median buffer)
                 weightsSum.push_back(pixelWindow.buffers[j].weightSum);
-                indices.push_back(pixelWindow.buffers[j].splatRGB[i]);  
+                csplats.push_back(pixelWindow.buffers[j].splatRGB[i]);  
+                indices.push_back(j);  
             }
 
             // Need now to sort data
@@ -165,7 +167,7 @@ void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
             // pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.csplats[unsortedIndex];
 
             rgb[i] = cvalues[unsortedIndex];
-            splatRGB[i] = Float(cvalues[unsortedIndex]);
+            splatRGB[i] = Float(csplats[unsortedIndex]);
         }
     }
 
