@@ -79,13 +79,6 @@ struct PixelWindow {
     double weightSum = 0;
     double allWeightSum = 0;
     AtomicDouble splatRGB[3];
-
-    // use for sort values
-    int indices[maxnbuffers];
-    double sortedValues[maxnbuffers];
-    double cvalues[maxnbuffers];
-    Float weightsSum[maxnbuffers];
-    double csplats[maxnbuffers];
 };
 
 // Base Estimator class
