@@ -522,7 +522,7 @@ void RGBFilm::AddSplat(const Point2f &p, SampledSpectrum L,
         if (wt != 0) {
             PixelWindow &pixel = pixels[pi];
             for (int i = 0; i < 3; ++i)
-                pixel.buffers[pixel.index].splatRGB[i].Add(wt * rgb[i]); // add to current index
+                pixel.splatRGB[i].Add(wt * rgb[i]); // add to current index
         }
     }
 }

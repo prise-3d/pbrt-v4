@@ -28,8 +28,8 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
     //     estimator = std::make_unique<MeanEstimator>(name);
     // else if (name == "mon")
     //     estimator = std::make_unique<MONEstimator>(name);
-    if (name == "djung")
-        estimator = std::make_unique<JungEstimator>(name);
+    if (name == "zirr")
+        estimator = std::make_unique<ZirrEstimator>(name);
     // else if (name == "amon")
     //     estimator = std::make_unique<AlphaMONEstimator>(name);
     // else if (name == "admon")
@@ -53,8 +53,8 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
     // else if (name == "gabmm")
     //     estimator = std::make_unique<GABMMEstimator>(name);
     else {
-        printf("%s: estimator type unknown. Use of default: jung", name.c_str());
-        estimator = std::make_unique<JungEstimator>(name);
+        printf("%s: estimator type unknown. Use of default: zirr", name.c_str());
+        estimator = std::make_unique<ZirrEstimator>(name);
     }
 
     if (!estimator)
@@ -67,7 +67,7 @@ std::string Estimator::ToString() const {
     return name + "Estimator";
 }
 
-void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+void ZirrEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
 {
     
     weightSum = pixelWindow.weightSum;

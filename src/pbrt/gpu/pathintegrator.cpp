@@ -628,7 +628,7 @@ void GPURender(ParsedScene &scene) {
             // else
             // std::cout << "Rendering of " << i * spp + j << " to " << i * spp + j + 1 << std::endl;
             integrator->Render(i * spp + j, i * spp + j + 1);
-            integrator->film.ComputeStd();
+            // integrator->film.ComputeStd();
             progress.Update();
         }
         progress.Done();

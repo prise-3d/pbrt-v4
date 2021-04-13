@@ -16,6 +16,7 @@
 #include <pbrt/util/vecmath.h>
 #include <pbrt/util/math.h>
 #include <pbrt/util/color.h>
+#include <pbrt/options.h>
 
 #include <pbrt/base/bxdf.h>
 #include <pbrt/base/camera.h>
@@ -35,8 +36,8 @@
 
 namespace pbrt {
 
-// P3D update : 17 as suggested by Jung
-const int maxnbuffers = 17;
+// P3D update : 6 as suggested by Zirr
+const int maxnbuffers = 6;
 
 // Need to externalise PixelWindow declaration for RGBFilm
 // P3D Updates
@@ -67,25 +68,17 @@ struct PixelWindow {
     VarianceEstimator<Float> varianceEstimator;
 
     int windowSize = maxnbuffers; // number of buffers clusters
-    int index = 0; // keep track of index used
     int nsamples = 0; // keep track of real added nsamples;
-    bool medianUse = false; // set if median is used or not
-    double rgbSum[3] = {0., 0., 0.}; // store final expected sample using median
-    double allrgbSum[3] = {0., 0., 0.}; // store final expected sample using median
-    double squaredSum[3] = {0., 0., 0.}; // keep track of current squared sum values of all samples
-    double mean[3] = {0., 0., 0.}; // keep track of current mean value with all samples (need to compute every `windowSize`)
-    Float std = 0.; // store current std
+    double rgbSum[3] = {0., 0., 0.}; 
+    double mean[3] = {0., 0., 0.}; 
 
     double weightSum = 0;
-    double allWeightSum = 0;
     AtomicDouble splatRGB[3];
-
-    // use for sort values
-    int indices[maxnbuffers];
-    double sortedValues[maxnbuffers];
-    double cvalues[maxnbuffers];
-    Float weightsSum[maxnbuffers];
-    double csplats[maxnbuffers];
+    double cascadeStart = 1;
+    double cascadeBase = 8;
+    int kmin = 1;
+    int k = 100;
+    int totalSamples = *Options->pixelSamples * *Options->nimages;
 };
 
 // Base Estimator class
@@ -110,11 +103,11 @@ class Estimator {
 };
 
 // Jung implemented estimator Estimator class
-class JungEstimator : public Estimator {
+class ZirrEstimator : public Estimator {
 
     public:
 
-        JungEstimator(const std::string &name) : Estimator(name) {}; 
+        ZirrEstimator(const std::string &name) : Estimator(name) {}; 
 
         PBRT_CPU_GPU
         void Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const;

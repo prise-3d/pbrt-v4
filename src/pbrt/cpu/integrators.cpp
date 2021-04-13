@@ -213,7 +213,7 @@ void ImageTileIntegrator::Render() {
         // std::cout << std::endl;
         // std::cout << "-----------------" << std::endl;
         // std::cout << waveStart << " over " << spp << " done" << std::endl;
-        camera.GetFilm().ComputeStd();
+        // camera.GetFilm().ComputeStd();
 
         // Update start and end wave
         waveStart = waveEnd;

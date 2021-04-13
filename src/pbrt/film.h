@@ -303,175 +303,73 @@ class RGBFilm : public FilmBase {
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
 
-        // add to current Film
-        rgbSum[0] += rgb[0];
-        rgbSum[1] += rgb[1];
-        rgbSum[2] += rgb[2];
-
-        squaredSum[0] += (rgb[0] * rgb[0]);
-        squaredSum[1] += (rgb[1] * rgb[1]);
-        squaredSum[2] += (rgb[2] * rgb[2]);
-
-        nsamples += 1;
-        sceneWeightSum += weight;
-
-        // add sample to current buffer with weight
-        pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
-
-        pixelWindow.buffers[pixelWindow.index].weightSum += weight;
-       
-        // Keep all information about samples
-        pixelWindow.allrgbSum[0] += rgb[0];
-        pixelWindow.allrgbSum[1] += rgb[1];
-        pixelWindow.allrgbSum[2] += rgb[2];
-
-        pixelWindow.squaredSum[0] += (rgb[0] * rgb[0]);
-        pixelWindow.squaredSum[1] += (rgb[1] * rgb[1]);
-        pixelWindow.squaredSum[2] += (rgb[2] * rgb[2]);
-
-        pixelWindow.allWeightSum += weight;
-
-        pixelWindow.index += 1;
         pixelWindow.nsamples += 1;
 
-        if (pixelWindow.index >= pixelWindow.windowSize) {
-            Float currentWeight = 0.;
+        // for each channel splat sample S_i into two buffers cascade
+        for (int i = 0; i < 3; i ++) {
 
-            if (pixelWindow.windowSize == 1) {
-                // store channel information
-                for (int i = 0; i < 3; i++) {
-                    currentWeight += pixelWindow.buffers[0].weightSum;
-                    pixelWindow.rgbSum[i] += pixelWindow.buffers[0].rgbSum[i];
-                    pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.buffers[0].splatRGB[i];
-                }
-            } 
-            else
-            {
-                // based on channel numbers
-                for (int i = 0; i < 3; i++) {
-                    
-                    // std::cout << "Current values are:" << std::endl;
-                    // store channel information in available temp buffer
-                    for (int j = 0; j < pixelWindow.windowSize; j++) {
+            double luminance = rgb[i];
 
-                        // std::cout << "-- Channel (" << i << "), b[" << j << "] : " << pixelWindow.buffers[j].rgbSum[i] << std::endl; 
-                        pixelWindow.cvalues[j] = pixelWindow.buffers[j].rgbSum[i];
-                        pixelWindow.sortedValues[j] = pixelWindow.buffers[j].rgbSum[i];
-                        // per channel management (but weight can be different depending of median buffer)
-                        pixelWindow.weightsSum[j] = pixelWindow.buffers[j].weightSum;
-                        pixelWindow.csplats[j] = pixelWindow.buffers[j].splatRGB[i];  
-                        pixelWindow.indices[j] = j; // restore indices
-                    }
+            int N = pixelWindow.totalSamples;
+            double lowerScale = pixelWindow.cascadeStart;
+            double upperScale = lowerScale * pixelWindow.cascadeBase;
+            double weightLower = 0;
+            double weightUppper = 0;
 
-                    // Need now to sort data
-                    //std::sort(std::begin(pixelWindow.indices), std::begin(pixelWindow.indices) + pixelWindow.windowSize, 
-                    //    [&](int i, int j){return pixelWindow.cvalues[i] < pixelWindow.cvalues[j];
-                    //});
+            int baseIndex = 0;
 
-                    int jj, kk, min, tempI;
-                    double temp;
-                    int n = pixelWindow.windowSize;
-
-                    for (jj = 0; jj < n - 1; jj++) {
-                        min = jj;
-                        for (kk = jj + 1; kk < n; kk++)
-                            if (pixelWindow.sortedValues[kk] < pixelWindow.sortedValues[min])
-                                min = kk;
-
-                        temp = pixelWindow.sortedValues[jj];
-                        pixelWindow.sortedValues[jj] = pixelWindow.sortedValues[min];
-                        pixelWindow.sortedValues[min] = temp;
-
-                        tempI = pixelWindow.indices[jj];
-                        pixelWindow.indices[jj] = pixelWindow.indices[min];
-                        pixelWindow.indices[min] = tempI;
-                    }
-
-                    //std::cout << "Sorted values are:" << std::endl;
-                    // for (int j = 0; j < pixelWindow.windowSize; j++) {
-                    //    std::cout << "-- Channel (" << i << "), b[" << pixelWindow.indices[j] << "] : " << pixelWindow.sortedValues[j] << std::endl;
-                    //}
-
-                    //std::cout << "Median index :" << pixelWindow.indices[int(pixelWindow.windowSize/2)] << std::endl;
-                    //std::cout << "Median value :" << pixelWindow.cvalues[int(pixelWindow.windowSize/2)] << std::endl;
-
-                    // need to find median value of pixelWindow.cavlues
-
-                    // Float medianWeight, median = 0.;
-                    // double medianSplat = 0;
-
-                    // // compute median from means
-                    // // find associated weightsum index and use it
-                    // // Classical MON
-                    // // if (windowSize % 2 == 1){
-                    unsigned unsortedIndex = pixelWindow.indices[int(pixelWindow.windowSize/2)];
-
-                    // median = pixelWindow.cvalues[unsortedIndex];
-                    // medianWeight = pixelWindow.weightsSum[unsortedIndex];
-                    // medianSplat = pixelWindow.csplats[unsortedIndex];
-                    // // }
-                    // // else{
-                    // //     int k_mean = int(windowSize/2);
-                    // //     unsigned firstIndex = sortedIndices[k_mean - 1];
-                    // //     unsigned secondIndex = sortedIndices[k_mean];
-
-                    // //     median = (cvalues[firstIndex] + cvalues[secondIndex]) / 2;
-                    // //     medianWeight = (weightsSum[firstIndex] + weightsSum[secondIndex]) / 2;
-                    // //     medianSplat = (csplats[firstIndex]  + csplats[secondIndex]) / 2;
-                    // // }
-
-                    // // store channel information
-                    currentWeight += pixelWindow.weightsSum[unsortedIndex];
-                    pixelWindow.rgbSum[i] += pixelWindow.cvalues[unsortedIndex] * pixelWindow.windowSize;
-                    pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.csplats[unsortedIndex];
-                }
+            /* find adjacent layers in cascade for <luminance> */
+            while (!(luminance < upperScale) && baseIndex < pixelWindow.windowSize - 2) {
+                lowerScale = upperScale;
+                upperScale *= pixelWindow.cascadeBase;
+                ++baseIndex;
             }
 
-            pixelWindow.weightSum += (currentWeight / 3);
+            // buffers are (<baseIndex>, <baseIndex>+1) where to add splatting samples
 
-            // // clear now the buffers data for the sliding window
-            for (int i = 0; i < pixelWindow.windowSize; i++) {
+            /* weight for lower buffer */
+            if (luminance <= lowerScale)
+                weightLower = 1.0f;
+            else if (luminance < upperScale)
+                weightLower = std::max(0., (lowerScale / luminance - lowerScale / upperScale) / (1 - lowerScale / upperScale));
+            else // Inf, NaN ...
+                weightLower = 0.0f;
+            
+            /* weight for higher buffer */
+            if (luminance < upperScale)
+                weightUppper = std::max(0., 1 - weightLower);
+            else // out of cascade range, we don't expect this to converge
+                weightUppper = upperScale / luminance;
 
-                for (int j = 0; j < 3; j++) {
-                    pixelWindow.buffers[i].rgbSum[j] = 0.;
-                    pixelWindow.buffers[i].splatRGB[j] = 0.;
-                }
+            
+            // Now we add samples with the corresponding weight into cascade B_j and B_j + 1
+            // multiply by current weight of PBRT
+            pixelWindow.buffers[baseIndex].rgbSum[i] += luminance * weightLower * weight;
+            pixelWindow.buffers[baseIndex + 1].rgbSum[i] += luminance * weightUppper * weight;
 
-                pixelWindow.buffers[i].weightSum = 0.;
-            }
+            // Now compute n_i 
+            // TODO: use of kernel 3x3 with global reliability and local (as in example)
+            Float n_i = (N * pixelWindow.buffers[baseIndex - 1].rgbSum[i]) / (lowerScale - pixelWindow.cascadeBase);
+            n_i += (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (lowerScale);
+            n_i += (N * pixelWindow.buffers[baseIndex + 1].rgbSum[i]) / (lowerScale + pixelWindow.cascadeBase);
 
-            // TODO : add dynamic windowSize
-            // pixelWindow.windowSize = 1;
-            Float stdSum = 0.;
+            // Compute the expected weight for current sample
+            Float rc_Si = N / (n_i - pixelWindow.kmin); // N / (n_i - k_{min})
+            Float rv_Si = lowerScale / pixelWindow.rgbSum[i]; // b^j / E_{min}[F]
 
-            // // std::cout << "Update current pixelWindow (" << windowSize << ")" << std::endl;
-
-            // // compute current mean and std
-            for (int i = 0; i < 3; i++) {
-                pixelWindow.mean[i] = pixelWindow.allrgbSum[i]  / nsamples;
-                stdSum += (pixelWindow.squaredSum[i] / nsamples) - (pixelWindow.mean[i] * pixelWindow.mean[i]);
-            }
-
-            // // divide per number of chanels and get current std
-            pixelWindow.std = std::sqrt(stdSum / 3);
-
-            Float stdRatio = pixelWindow.std / currentStd; 
-
-            if (stdRatio < 1.) {
-                pixelWindow.windowSize = 1;
+            // depending of first sample or not, do something different
+            if (pixelWindow.nsamples == 0) {
+                Float wc = N / (pixelWindow.k * rc_Si);
             } else {
-                pixelWindow.windowSize = 2 * (std::floor(std::log2(stdRatio)) + 1) + 1;
+
+                Float r_si = std::min(rc_Si, rv_Si);
+                Float w = N / (pixelWindow.k * r_si);
             }
 
-            if (pixelWindow.windowSize > pbrt::maxnbuffers){
-                pixelWindow.windowSize = pbrt::maxnbuffers;
-            }
 
-            // reset index to sliding over WindowSize
-            pixelWindow.index = 0;
+
         }
+
     }
 
     PBRT_CPU_GPU
@@ -501,28 +399,6 @@ class RGBFilm : public FilmBase {
         return outputRGBFromSensorRGB * sensorRGB;
     }
 
-    PBRT_CPU_GPU
-    void ComputeStd() {
-        
-        Float stdSum = 0;
-
-        // ParallelFor2D(pixelBounds, [&](Point2i p) {
-            
-        //     stdSum += pixels[p].currentStd;
-        // });
-
-        // return stdSum / (fullResolution.x * fullResolution.y);
-
-        // // compute current mean and std
-        for (int i = 0; i < 3; i++) {
-            Float mean = rgbSum[i] / nsamples;
-            stdSum += (squaredSum[i] / nsamples) - (mean * mean);
-        }
-
-        // divide per number of chanels and get current film std
-        currentStd = std::sqrt(stdSum / 3);
-        // std::cout << "Scene std is " << currentStd << " with " << nsamples << std::endl;
-    }
 
   private:
     // RGBFilm::Pixel Definition
@@ -603,11 +479,6 @@ class GBufferFilm : public FilmBase {
         return rgb;
     }
 
-    PBRT_CPU_GPU
-    void ComputeStd() {
-        // return 0.;
-    }
-
     void WriteImage(ImageMetadata metadata, Float splatScale = 1, unsigned imageIndex = 1);
     Image GetImage(ImageMetadata *metadata, Float splatScale = 1);
 
@@ -683,14 +554,6 @@ inline bool Film::UsesVisibleSurface() const {
     auto uses = [&](auto ptr) { return ptr->UsesVisibleSurface(); };
     return Dispatch(uses);
 }
-
-// P3D update
-PBRT_CPU_GPU
-inline void Film::ComputeStd() {
-    auto std = [&](auto ptr) { return ptr->ComputeStd(); };
-    return Dispatch(std);
-}
-
 
 PBRT_CPU_GPU
 inline RGB Film::GetPixelRGB(const Point2i &p, Float splatScale) const {
