@@ -349,9 +349,14 @@ class RGBFilm : public FilmBase {
             // Now compute n_i 
             // TODO: use of kernel 3x3 for global reliability and local (as in example)
             // double n_i = (N * pixelWindow.buffers[baseIndex - 1].rgbSum[i]) / (lowerScale - pixelWindow.cascadeBase);
-            double n_i = (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (lowerScale);
-            n_i += (N * pixelWindow.buffers[baseIndex + 1].rgbSum[i]) / (lowerScale + pixelWindow.cascadeBase);
-            // std::cout << n_i << std::endl;
+
+            double n_i = 0;
+            double prev = lowerScale - pixelWindow.cascadeBase;
+            for (int j = 0; j < 3; j++)
+                if (prev + (pixelWindow.cascadeBase * (j + 1)) > 0)
+                    n_i += (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (prev + (pixelWindow.cascadeBase * (j + 1)));
+            // n_i += (N * pixelWindow.buffers[baseIndex + 1].rgbSum[i]) / (lowerScale + pixelWindow.cascadeBase);
+            std::cout << "n_i: " << n_i << std::endl;
 
             // Compute the expected weight for current sample
             Float rc_Si = N / (n_i - pixelWindow.kmin); // N / (n_i - k_{min})
@@ -360,6 +365,7 @@ class RGBFilm : public FilmBase {
             // depending of first sample or not, do something different
             if (pixelWindow.nsamples == 0) {
                 Float wc = N / (pixelWindow.k * rc_Si);
+                std::cout << "Weight 0: " << wc << std::endl;
 
                 pixelWindow.rgbSum[i] += (1 / N) * wc * luminance;
 
@@ -367,9 +373,12 @@ class RGBFilm : public FilmBase {
 
                 Float r_si = std::min(rc_Si, rv_Si);
                 Float w = N / (pixelWindow.k * r_si);
+                std::cout << "Weight " << pixelWindow.nsamples << ": " << w << std::endl;
 
                 pixelWindow.rgbSum[i] += (1 / N) * w * luminance;
             }
+
+            std::cout << i << ": " << pixelWindow.rgbSum[i] << std::endl;
         }
     }
 
