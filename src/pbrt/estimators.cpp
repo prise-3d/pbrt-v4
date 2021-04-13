@@ -164,7 +164,7 @@ void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
             // pixelWindow.rgbSum[i] += pixelWindow.cvalues[unsortedIndex] * pixelWindow.windowSize;
             // pixelWindow.splatRGB[i] = pixelWindow.splatRGB[i] + pixelWindow.csplats[unsortedIndex];
 
-            rgb[i] = cvalues[unsortedIndex] * pixelWindow.windowSize;
+            rgb[i] = cvalues[unsortedIndex];
             splatRGB[i] = Float(cvalues[unsortedIndex]);
         }
     }
