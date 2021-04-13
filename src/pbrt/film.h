@@ -272,12 +272,12 @@ class RGBFilm : public FilmBase {
 
         estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
         
-        if (weightSum != 0)
-            rgb /= weightSum;
+        // if (weightSum != 0)
+        //     rgb /= weightSum;
 
         // Add splat value at pixel
-        for (int c = 0; c < 3; ++c)
-            rgb[c] += splatScale * splatRGB[c] / filterIntegral;
+        // for (int c = 0; c < 3; ++c)
+        //     rgb[c] += splatScale * splatRGB[c] / filterIntegral;
 
         // Convert _rgb_ to output RGB color space
         rgb = outputRGBFromSensorRGB * rgb;
@@ -341,17 +341,17 @@ class RGBFilm : public FilmBase {
             else // out of cascade range, we don't expect this to converge
                 weightUppper = upperScale / luminance;
 
-            
             // Now we add samples with the corresponding weight into cascade B_j and B_j + 1
             // multiply by current weight of PBRT
-            pixelWindow.buffers[baseIndex].rgbSum[i] += luminance * weightLower * weight;
-            pixelWindow.buffers[baseIndex + 1].rgbSum[i] += luminance * weightUppper * weight;
+            pixelWindow.buffers[baseIndex].rgbSum[i] += luminance * weightLower;
+            pixelWindow.buffers[baseIndex + 1].rgbSum[i] += luminance * weightUppper;
 
             // Now compute n_i 
-            // TODO: use of kernel 3x3 with global reliability and local (as in example)
-            Float n_i = (N * pixelWindow.buffers[baseIndex - 1].rgbSum[i]) / (lowerScale - pixelWindow.cascadeBase);
-            n_i += (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (lowerScale);
+            // TODO: use of kernel 3x3 for global reliability and local (as in example)
+            // double n_i = (N * pixelWindow.buffers[baseIndex - 1].rgbSum[i]) / (lowerScale - pixelWindow.cascadeBase);
+            double n_i = (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (lowerScale);
             n_i += (N * pixelWindow.buffers[baseIndex + 1].rgbSum[i]) / (lowerScale + pixelWindow.cascadeBase);
+            // std::cout << n_i << std::endl;
 
             // Compute the expected weight for current sample
             Float rc_Si = N / (n_i - pixelWindow.kmin); // N / (n_i - k_{min})
@@ -360,16 +360,17 @@ class RGBFilm : public FilmBase {
             // depending of first sample or not, do something different
             if (pixelWindow.nsamples == 0) {
                 Float wc = N / (pixelWindow.k * rc_Si);
+
+                pixelWindow.rgbSum[i] += (1 / N) * wc * luminance;
+
             } else {
 
                 Float r_si = std::min(rc_Si, rv_Si);
                 Float w = N / (pixelWindow.k * r_si);
+
+                pixelWindow.rgbSum[i] += (1 / N) * w * luminance;
             }
-
-
-
         }
-
     }
 
     PBRT_CPU_GPU
