@@ -312,7 +312,7 @@ class RGBFilm : public FilmBase {
         int minSamples = 1000000000; // huge spp
         for (int j = 0; j < pixelWindow.windowSize; j++) {
             if (pixelWindow.buffers[j].nsamples < minSamples) {
-                minSamples = pixelWindow[j].nsamples;
+                minSamples = pixelWindow.buffers[j].nsamples;
                 currentIndex = j;
             }
         }
