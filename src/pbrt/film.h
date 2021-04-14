@@ -303,14 +303,14 @@ class RGBFilm : public FilmBase {
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
 
-        pixelWindow.nsamples += 1;
+        bool hasContribution = false;
 
         // for each channel splat sample S_i into two buffers cascade
         for (int i = 0; i < 3; i ++) {
 
             double luminance = rgb[i];
 
-            int N = pixelWindow.totalSamples;
+            double N = pixelWindow.totalSamples;
             double lowerScale = pixelWindow.cascadeStart;
             double upperScale = lowerScale * pixelWindow.cascadeBase;
             double weightLower = 0;
@@ -352,34 +352,50 @@ class RGBFilm : public FilmBase {
 
             double n_i = 0;
             double prev = lowerScale - pixelWindow.cascadeBase;
-            for (int j = 0; j < 3; j++)
-                if (prev + (pixelWindow.cascadeBase * (j + 1)) > 0)
-                    n_i += (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (prev + (pixelWindow.cascadeBase * (j + 1)));
-            // n_i += (N * pixelWindow.buffers[baseIndex + 1].rgbSum[i]) / (lowerScale + pixelWindow.cascadeBase);
-            std::cout << "n_i: " << n_i << std::endl;
+            // for (int j = 0; j < 3; j++)
+            //     if (prev + (pixelWindow.cascadeBase * (j + 1)) > 0)
+            // n_i = (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (prev + (pixelWindow.cascadeBase * (j + 1)));
+            n_i = (N * pixelWindow.buffers[baseIndex].rgbSum[i]) / (lowerScale);
+            n_i += (N * pixelWindow.buffers[baseIndex + 1].rgbSum[i]) / (lowerScale + pixelWindow.cascadeBase);
+            // std::cout << "n_i: " << n_i << std::endl;
 
             // Compute the expected weight for current sample
             Float rc_Si = N / (n_i - pixelWindow.kmin); // N / (n_i - k_{min})
-            Float rv_Si = lowerScale / pixelWindow.rgbSum[i]; // b^j / E_{min}[F]
 
             // depending of first sample or not, do something different
             if (pixelWindow.nsamples == 0) {
-                Float wc = N / (pixelWindow.k * rc_Si);
-                std::cout << "Weight 0: " << wc << std::endl;
+                
+                Float wc;
+                if (n_i < (pixelWindow.k + pixelWindow.kmin))
+                    wc = (n_i - pixelWindow.kmin) / pixelWindow.k;
+                else
+                    wc = N / (pixelWindow.k * rc_Si);
 
-                pixelWindow.rgbSum[i] += (1 / N) * wc * luminance;
+                if (wc > 0.) {
+                    hasContribution = true;
+                    pixelWindow.rgbSum[i] += (1. / N) * wc * luminance;
+                    std::cout << "First contribution is: " << (1. / N) * wc * luminance << std::endl;
+                }
 
             } else {
 
+                Float rv_Si = lowerScale / pixelWindow.rgbSum[i]; // b^j / E_{min}[F]
                 Float r_si = std::min(rc_Si, rv_Si);
                 Float w = N / (pixelWindow.k * r_si);
-                std::cout << "Weight " << pixelWindow.nsamples << ": " << w << std::endl;
 
-                pixelWindow.rgbSum[i] += (1 / N) * w * luminance;
+                if (w > 0.)
+                    pixelWindow.rgbSum[i] += (1. / N) * w * luminance;
             }
 
-            std::cout << i << ": " << pixelWindow.rgbSum[i] << std::endl;
+            // std::cout << pixelWindow.rgbSum[i] << std::endl;
+            // std::cout << pixelWindow.nsamples << std::endl;
         }
+
+        if (pixelWindow.nsamples == 0 && hasContribution)
+            pixelWindow.nsamples += 1;
+
+        if (pixelWindow.nsamples > 0)
+            pixelWindow.nsamples += 1;
     }
 
     PBRT_CPU_GPU
