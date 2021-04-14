@@ -279,6 +279,10 @@ class RGBFilm : public FilmBase {
         for (int c = 0; c < 3; ++c)
             rgb[c] += splatScale * splatRGB[c] / filterIntegral;
 
+        // for (int i = 0; i < 3; i++) {
+        //     rgb[i] = pixelWindow.windowSize;
+        // }
+
         // Convert _rgb_ to output RGB color space
         rgb = outputRGBFromSensorRGB * rgb;
 
@@ -343,8 +347,8 @@ class RGBFilm : public FilmBase {
 
             // // compute current mean and std
             for (int i = 0; i < 3; i++) {
-                pixelWindow.mean[i] = pixelWindow.allrgbSum[i]  / nsamples;
-                stdSum += (pixelWindow.squaredSum[i] / nsamples) - (pixelWindow.mean[i] * pixelWindow.mean[i]);
+                pixelWindow.mean[i] = pixelWindow.allrgbSum[i]  / pixelWindow.nsamples;
+                stdSum += (pixelWindow.squaredSum[i] / pixelWindow.nsamples) - (pixelWindow.mean[i] * pixelWindow.mean[i]);
             }
 
             // // divide per number of chanels and get current std
@@ -400,13 +404,6 @@ class RGBFilm : public FilmBase {
         
         Float stdSum = 0;
 
-        // ParallelFor2D(pixelBounds, [&](Point2i p) {
-            
-        //     stdSum += pixels[p].currentStd;
-        // });
-
-        // return stdSum / (fullResolution.x * fullResolution.y);
-
         // // compute current mean and std
         for (int i = 0; i < 3; i++) {
             Float mean = rgbSum[i] / nsamples;
@@ -414,8 +411,7 @@ class RGBFilm : public FilmBase {
         }
 
         // divide per number of chanels and get current film std
-        currentStd = std::sqrt(stdSum / 3);
-        // std::cout << "Scene std is " << currentStd << " with " << nsamples << std::endl;
+        currentStd = std::sqrt(stdSum / 3.);
     }
 
   private:
