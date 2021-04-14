@@ -307,16 +307,21 @@ class RGBFilm : public FilmBase {
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
 
-        // focus first not well filled buffer before
-        int currentIndex = 0;
-        int minSamples = 1000000000; // huge spp
-        for (int j = 0; j < pixelWindow.windowSize; j++) {
-            if (pixelWindow.buffers[j].nsamples < minSamples) {
-                minSamples = pixelWindow.buffers[j].nsamples;
-                currentIndex = j;
+        int currentIndex = pixelWindow.index;
+
+        // ensure that each of the `maxbuffers` package will store enough data (avoid black pixels)
+        if (pixelWindow.nsamples > pixelWindow.minSamples){
+
+            // focus first not well filled buffer before
+            currentIndex = 0;
+            int minSpp = 1000000000; // huge spp
+            for (int j = 0; j < pixelWindow.windowSize; j++) {
+                if (pixelWindow.buffers[j].nsamples < minSpp) {
+                    minSpp = pixelWindow.buffers[j].nsamples;
+                    currentIndex = j;
+                }
             }
         }
-
 
         // add to current Film
         rgbSum[0] += rgb[0];
@@ -352,9 +357,9 @@ class RGBFilm : public FilmBase {
         pixelWindow.nsamples += 1;
         pixelWindow.buffers[currentIndex].nsamples += 1;
 
-        if (pixelWindow.index >= pixelWindow.windowSize) {
+        // if sliding window is reached and at least a minimum number of samples are balanced, we can use the dynamic update of M
+        if (pixelWindow.index >= pixelWindow.windowSize && pixelWindow.nsamples > pixelWindow.minSamples) {
             
-            // pixelWindow.windowSize = 1;
             Float stdSum = 0.;
 
             // // compute current mean and std
@@ -381,7 +386,9 @@ class RGBFilm : public FilmBase {
 
             // reset index to sliding over WindowSize
             pixelWindow.index = 0;
-        }
+        } 
+        else if (pixelWindow.index >= pixelWindow.windowSize)
+            pixelWindow.index = 0;
     }
 
     PBRT_CPU_GPU

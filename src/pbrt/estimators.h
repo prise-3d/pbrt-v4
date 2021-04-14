@@ -76,6 +76,7 @@ struct PixelWindow {
     double squaredSum[3] = {0., 0., 0.}; // keep track of current squared sum values of all samples
     double mean[3] = {0., 0., 0.}; // keep track of current mean value with all samples (need to compute every `windowSize`)
     Float std = 0.; // store current std
+    int minSamples = 100;
 
     double weightSum = 0;
     double allWeightSum = 0;
