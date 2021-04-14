@@ -338,11 +338,8 @@ class RGBFilm : public FilmBase {
 
         if (pixelWindow.index >= pixelWindow.windowSize) {
             
-            // TODO : add dynamic windowSize
             // pixelWindow.windowSize = 1;
             Float stdSum = 0.;
-
-            // // std::cout << "Update current pixelWindow (" << windowSize << ")" << std::endl;
 
             // // compute current mean and std
             for (int i = 0; i < 3; i++) {
@@ -355,6 +352,7 @@ class RGBFilm : public FilmBase {
 
             Float stdRatio = pixelWindow.std / currentStd; 
 
+            // adjust piwelWindow size
             if (stdRatio < 1.) {
                 pixelWindow.windowSize = 1;
             } else {
