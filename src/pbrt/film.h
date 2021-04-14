@@ -350,7 +350,7 @@ class RGBFilm : public FilmBase {
 
         pixelWindow.index += 1;
         pixelWindow.nsamples += 1;
-        pixelWindow[currentIndex].nsamples += 1;
+        pixelWindow.buffers[currentIndex].nsamples += 1;
 
         if (pixelWindow.index >= pixelWindow.windowSize) {
             
