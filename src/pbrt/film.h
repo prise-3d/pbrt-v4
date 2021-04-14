@@ -307,6 +307,17 @@ class RGBFilm : public FilmBase {
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
 
+        // focus first not well filled buffer before
+        int currentIndex = 0;
+        int minSamples = 1000000000; // huge spp
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            if (pixelWindow[j].nsamples < maxSamples) {
+                minSamples = pixelWindow[j].nsamples;
+                currentIndex = j;
+            }
+        }
+
+
         // add to current Film
         rgbSum[0] += rgb[0];
         rgbSum[1] += rgb[1];
@@ -320,11 +331,11 @@ class RGBFilm : public FilmBase {
         sceneWeightSum += weight;
 
         // add sample to current buffer with weight
-        pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
+        pixelWindow.buffers[currentIndex].rgbSum[0] += rgb[0];
+        pixelWindow.buffers[currentIndex].rgbSum[1] += rgb[1];
+        pixelWindow.buffers[currentIndex].rgbSum[2] += rgb[2];
 
-        pixelWindow.buffers[pixelWindow.index].weightSum += weight;
+        pixelWindow.buffers[currentIndex].weightSum += weight;
        
         // Keep all information about samples
         pixelWindow.allrgbSum[0] += rgb[0];
@@ -339,6 +350,7 @@ class RGBFilm : public FilmBase {
 
         pixelWindow.index += 1;
         pixelWindow.nsamples += 1;
+        pixelWindow[currentIndex].nsamples += 1;
 
         if (pixelWindow.index >= pixelWindow.windowSize) {
             

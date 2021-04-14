@@ -47,6 +47,7 @@ struct PixelBuffer {
     double rgbSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
     double weightSum = 0.;
+    int nsamples = 0;
 
     void Clear() {
 
