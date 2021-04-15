@@ -270,21 +270,21 @@ class RGBFilm : public FilmBase {
         RGB rgb(0, 0, 0);
         Float weightSum = 0.;
 
-        estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
+        // estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
         
-        if (weightSum != 0)
-            rgb /= weightSum;
+        // if (weightSum != 0)
+        //     rgb /= weightSum;
 
-        // Add splat value at pixel
-        for (int c = 0; c < 3; ++c)
-            rgb[c] += splatScale * splatRGB[c] / filterIntegral;
+        // // Add splat value at pixel
+        // for (int c = 0; c < 3; ++c)
+        //     rgb[c] += splatScale * splatRGB[c] / filterIntegral;
 
-        // for (int i = 0; i < 3; i++) {
-        //     rgb[i] = pixelWindow.windowSize;
-        // }
+        for (int i = 0; i < 3; i++) {
+            rgb[i] = pixelWindow.std / currentStd;
+        }
 
         // Convert _rgb_ to output RGB color space
-        rgb = outputRGBFromSensorRGB * rgb;
+        // rgb = outputRGBFromSensorRGB * rgb;
 
         return rgb;
     }
