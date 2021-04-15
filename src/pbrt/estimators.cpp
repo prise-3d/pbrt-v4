@@ -90,43 +90,51 @@ void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
         // based on channel numbers
         for (int i = 0; i < 3; i++) {
 
-            // store channel information
-            pstd::vector<Float> cvalues;
-            pstd::vector<Float> weightsSum;
+            pstd::vector<double> cvalues;
             pstd::vector<double> csplats;
-
+            pstd::vector<double> sortedValues;
+            pstd::vector<int> indices;
+            pstd::vector<double> weightsSum;
+            
             for (int j = 0; j < pixelWindow.windowSize; j++) {
+ 
                 cvalues.push_back(pixelWindow.buffers[j].rgbSum[i]);
-                // per channel management (but weight can be different depending of median buffer)
+                sortedValues.push_back(pixelWindow.buffers[j].rgbSum[i]);
                 weightsSum.push_back(pixelWindow.buffers[j].weightSum);
-                csplats.push_back(pixelWindow.buffers[j].splatRGB[i]);
+                csplats.push_back(pixelWindow.buffers[j].splatRGB[i]);  
+                indices.push_back(j);  
             }
 
-            // temp storage in order to sort values
-            pstd::vector<Float> means(cvalues);
-            pstd::vector<int> sortedIndices = means.sort();
+            // Need now to sort data only on windowSize
+            int jj, kk, min, tempI;
+            double temp;
+            int n = pixelWindow.windowSize;
 
-            Float monWeight, monMean = 0.;
-            double monSplat = 0;
+            for (jj = 0; jj < n - 1; jj++) {
+                min = jj;
+                for (kk = jj + 1; kk < n; kk++)
+                    if (sortedValues[kk] < sortedValues[min])
+                        min = kk;
 
-            // compute median from means
-            // find associated weightsum index and use it
-            // Classical MON
-            unsigned unsortedIndex = sortedIndices[int(pixelWindow.windowSize/2)];
+                temp = sortedValues[jj];
+                sortedValues[jj] = sortedValues[min];
+                sortedValues[min] = temp;
 
-            monMean = cvalues[unsortedIndex];
-            monWeight = weightsSum[unsortedIndex];
-            monSplat = csplats[unsortedIndex];
-            
-            // store channel information
-            weightSum += monWeight;
-            rgb[i] = monMean;
-            splatRGB[i] = monSplat;
+                tempI = indices[jj];
+                indices[jj] = indices[min];
+                indices[min] = tempI;
+            }
+
+            unsigned unsortedIndex = indices[int(pixelWindow.windowSize/2)];
+
+            // // store channel information
+            currentWeight += weightsSum[unsortedIndex];
+            rgb[i] = cvalues[unsortedIndex];
+            splatRGB[i] = Float(csplats[unsortedIndex]);
         }
     }
 
     weightSum = (currentWeight / 3);
 };
-
 
 }
