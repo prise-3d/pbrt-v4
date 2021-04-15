@@ -280,7 +280,7 @@ class RGBFilm : public FilmBase {
         //     rgb[c] += splatScale * splatRGB[c] / filterIntegral;
 
         for (int i = 0; i < 3; i++) {
-            rgb[i] = pixelWindow.std / currentStd;
+            rgb[i] = pixelWindow.windowSize;
         }
 
         // Convert _rgb_ to output RGB color space
