@@ -74,10 +74,15 @@ void JungEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
     
     if (pixelWindow.windowSize == 1) {
         // store channel information
+
+        // same as mean, hence use of all samples
         for (int i = 0; i < 3; i++) {
-            currentWeight += pixelWindow.buffers[0].weightSum;
-            rgb[i] = pixelWindow.buffers[0].rgbSum[i];
-            splatRGB[i] = Float(pixelWindow.buffers[0].splatRGB[i]);
+
+            for (int j = 0; j < pixelWindow.windowSize; j++) {
+                currentWeight += pixelWindow.buffers[j].weightSum;
+                rgb[i] += pixelWindow.buffers[j].rgbSum[i];
+                splatRGB[i] = splatRGB[i] + pixelWindow.buffers[j].splatRGB[i];
+            }
         }
     } 
     else
