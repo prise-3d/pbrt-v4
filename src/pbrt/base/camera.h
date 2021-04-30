@@ -30,11 +30,12 @@ class StereoscopicCamera; // P3D Updates
 class AutoStereoscopicCamera; // P3D Updates
 class OrthographicCamera;
 class SphericalCamera;
+class ODSCamera; // P3D Updates
 class RealisticCamera;
 
 // P3D Update
 // Camera Definition
-class Camera : public TaggedPointer<PerspectiveCamera, StereoscopicCamera, AutoStereoscopicCamera, OrthographicCamera,
+class Camera : public TaggedPointer<PerspectiveCamera, StereoscopicCamera, AutoStereoscopicCamera,ODSCamera , OrthographicCamera,
                                           SphericalCamera, RealisticCamera> {
   public:
     // Camera Interface
