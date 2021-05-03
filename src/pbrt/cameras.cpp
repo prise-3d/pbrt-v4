@@ -1789,9 +1789,6 @@ pstd::optional<CameraRay> ODSCamera::GenerateRay(CameraSample sample,
     Float theta = Pi * uv[1], phi = 2 * Pi * uv[0];
    
     // ray origin
-    float offset;
-    if(view == "left") offset = -1;
-    else offset = 1;
     Point3f origin(std::cos(theta)* IPD / 2 * offset, 0, std::sin(theta)* IPD / 2 * offset);
 
     // ray direction
@@ -1814,16 +1811,22 @@ ODSCamera *ODSCamera::Create(const ParameterDictionary &parameters,
     //view side
     std::string defView = "left";
     std::string view = parameters.GetOneString("view", defView);
+    float offset=0;
 
     if (view !="left" && view !="right") {
         Warning("incorrect stereoscopic view = %s - left view assumed",
             view.c_str());
         view = defView;
     }
+    else
+    {
+        if(view == "right") offset = 1;
+        else offset = -1;
+    }
     //distance between eyes
     Float IPD = parameters.GetOneFloat("eyeDistance", 0.065);
 
-    return alloc.new_object<ODSCamera>(cameraBaseParameters, mapping,view,IPD);
+    return alloc.new_object<ODSCamera>(cameraBaseParameters, mapping,offset,IPD);
 }
 
 std::string ODSCamera::ToString() const {

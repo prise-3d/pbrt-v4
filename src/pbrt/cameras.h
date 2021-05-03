@@ -688,10 +688,10 @@ class ODSCamera : public SphericalCamera {
   public:
 
     // SphericalCamera Public Methods
-    ODSCamera(CameraBaseParameters baseParameters, Mapping mapping,const std::string view,const float IPD)
+    ODSCamera(CameraBaseParameters baseParameters, Mapping mapping,const float offset,const float IPD)
         : SphericalCamera(baseParameters, mapping) {
 
-        this->view = view;
+        this->offset = offset;
         this->IPD = IPD;
 
         // Compute minimum differentials for _SphericalCamera_
@@ -717,7 +717,7 @@ class ODSCamera : public SphericalCamera {
 
     private:
     Mapping mapping;
-    std::string view;
+    float offset;
     float IPD;
 };
 
