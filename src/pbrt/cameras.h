@@ -380,7 +380,10 @@ class SphericalCamera : public CameraBase {
     enum Mapping { EquiRectangular, EqualArea };
 
     // SphericalCamera Public Methods
-    SphericalCamera(CameraBaseParameters baseParameters, Mapping mapping)
+    //HACK
+    //no view and no IPD param
+    //HACK
+    SphericalCamera(CameraBaseParameters baseParameters, Mapping mapping, const std::string view,const float IPD)
         : CameraBase(baseParameters), mapping(mapping) {
         // Compute minimum differentials for _SphericalCamera_
         FindMinimumDifferentials(this);
@@ -425,6 +428,8 @@ class SphericalCamera : public CameraBase {
   private:
     // SphericalCamera Private Members
     Mapping mapping;
+    std::string view;
+    float IPD;
 };
 
 // RealisticCamera Definition
@@ -689,7 +694,7 @@ class ODSCamera : public SphericalCamera {
 
     // SphericalCamera Public Methods
     ODSCamera(CameraBaseParameters baseParameters, Mapping mapping,const std::string view,const float IPD)
-        : SphericalCamera(baseParameters, mapping) {
+        : SphericalCamera(baseParameters, mapping,view,IPD) {
 
         this->view = view;
         this->IPD = IPD;

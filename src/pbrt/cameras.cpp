@@ -643,11 +643,21 @@ pstd::optional<CameraRay> SphericalCamera::GenerateRay(CameraSample sample,
     Point2f uv(sample.pFilm.x / film.FullResolution().x,
                sample.pFilm.y / film.FullResolution().y);
     Vector3f dir;
+    Point3f origin(0,0,0);
     if (mapping == EquiRectangular) {
         // Compute ray direction using equirectangular mapping
         Float theta = Pi * uv[1], phi = 2 * Pi * uv[0];
         dir = SphericalDirection(std::sin(theta), std::cos(theta), phi);
 
+//HACK//HACK
+        // ray origin
+        float offset;
+        if(view == "left") offset = -1;
+        else offset = 1;
+        origin.x = std::cos(theta)* IPD / 2 * offset;
+        origin.y = 0;
+        origin.z = std::sin(theta)* IPD / 2 * offset;
+//HACK//HACK
     } else {
         // Compute ray direction using equal area mapping
         uv = WrapEqualAreaSquare(uv);
@@ -655,7 +665,9 @@ pstd::optional<CameraRay> SphericalCamera::GenerateRay(CameraSample sample,
     }
     pstd::swap(dir.y, dir.z);
 
-    Ray ray(Point3f(0, 0, 0), dir, SampleTime(sample.time), medium);
+//HACK//HACK
+//origin was Point3f(0,0,0)
+    Ray ray(origin, dir, SampleTime(sample.time), medium);
     return CameraRay{RenderFromCamera(ray)};
 }
 
@@ -708,7 +720,12 @@ SphericalCamera *SphericalCamera::Create(const ParameterDictionary &parameters,
                   "\"equalarea\" or \"equirectangular\".)",
                   m);
 
-    return alloc.new_object<SphericalCamera>(cameraBaseParameters, mapping);
+//HACK
+    std::string view = parameters.GetOneString("view", "right");
+    Float IPD = parameters.GetOneFloat("viewDistance", 0.065f);
+//HACK
+    return alloc.new_object<SphericalCamera>(cameraBaseParameters, mapping,  view,IPD);
+//HACK
 }
 
 std::string SphericalCamera::ToString() const {
