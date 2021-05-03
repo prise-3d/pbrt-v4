@@ -118,7 +118,7 @@ void CPURender(ParsedScene &parsedScene) {
 
     // Non-animated shapes
     auto CreatePrimitivesForShapes =
-        [&](const std::vector<ShapeSceneEntity> &shapes) -> std::vector<Primitive> {
+        [&](std::vector<ShapeSceneEntity> &shapes) -> std::vector<Primitive> {
         // Parallelize Shape::Create calls, which will in turn
         // parallelize PLY file loading, etc...
         pstd::vector<pstd::vector<Shape>> shapeVectors(shapes.size());
@@ -131,7 +131,7 @@ void CPURender(ParsedScene &parsedScene) {
 
         std::vector<Primitive> primitives;
         for (size_t i = 0; i < shapes.size(); ++i) {
-            const auto &sh = shapes[i];
+            auto &sh = shapes[i];
             pstd::vector<Shape> &shapes = shapeVectors[i];
             if (shapes.empty())
                 continue;
@@ -174,20 +174,24 @@ void CPURender(ParsedScene &parsedScene) {
                     primitives.push_back(
                         new GeometricPrimitive(s, mtl, area, mi, alphaTex));
             }
+            sh.parameters.FreeParameters();
+            sh = ShapeSceneEntity();
         }
         return primitives;
     };
 
     std::vector<Primitive> primitives = CreatePrimitivesForShapes(parsedScene.shapes);
 
+    parsedScene.shapes.clear();
+    parsedScene.shapes.shrink_to_fit();
+
     // Animated shapes
     auto CreatePrimitivesForAnimatedShapes =
-        [&](const std::vector<AnimatedShapeSceneEntity> &shapes)
-        -> std::vector<Primitive> {
+        [&](std::vector<AnimatedShapeSceneEntity> &shapes) -> std::vector<Primitive> {
         std::vector<Primitive> primitives;
         primitives.reserve(shapes.size());
 
-        for (const auto &sh : shapes) {
+        for (auto &sh : shapes) {
             pstd::vector<Shape> shapes =
                 Shape::Create(sh.name, sh.identity, sh.identity, sh.reverseOrientation,
                               sh.parameters, &sh.loc, alloc);
@@ -247,6 +251,9 @@ void CPURender(ParsedScene &parsedScene) {
                 prims.push_back(bvh);
             }
             primitives.push_back(new AnimatedPrimitive(prims[0], sh.renderFromObject));
+
+            sh.parameters.FreeParameters();
+            sh = AnimatedShapeSceneEntity();
         }
         return primitives;
     };
@@ -254,6 +261,9 @@ void CPURender(ParsedScene &parsedScene) {
         CreatePrimitivesForAnimatedShapes(parsedScene.animatedShapes);
     primitives.insert(primitives.end(), animatedPrimitives.begin(),
                       animatedPrimitives.end());
+
+    parsedScene.animatedShapes.clear();
+    parsedScene.animatedShapes.shrink_to_fit();
 
     // Instance definitions
     std::map<std::string, Primitive> instanceDefinitions;
@@ -264,7 +274,7 @@ void CPURender(ParsedScene &parsedScene) {
          iter != parsedScene.instanceDefinitions.end(); ++iter)
         instanceDefinitionIterators.push_back(iter);
     ParallelFor(0, instanceDefinitionIterators.size(), [&](int64_t i) {
-        const auto &inst = *instanceDefinitionIterators[i];
+        auto &inst = *instanceDefinitionIterators[i];
 
         std::vector<Primitive> instancePrimitives =
             CreatePrimitivesForShapes(inst.second.shapes);
@@ -285,7 +295,11 @@ void CPURender(ParsedScene &parsedScene) {
             instanceDefinitions[inst.first] = nullptr;
         else
             instanceDefinitions[inst.first] = instancePrimitives[0];
+
+        inst.second = InstanceDefinitionSceneEntity();
     });
+
+    parsedScene.instanceDefinitions.clear();
 
     // Instances
     for (const auto &inst : parsedScene.instances) {
@@ -300,10 +314,15 @@ void CPURender(ParsedScene &parsedScene) {
         if (inst.renderFromInstance)
             primitives.push_back(
                 new TransformedPrimitive(iter->second, inst.renderFromInstance));
-        else
+        else {
             primitives.push_back(
-                new AnimatedPrimitive(iter->second, inst.renderFromInstanceAnim));
+                new AnimatedPrimitive(iter->second, *inst.renderFromInstanceAnim));
+            delete inst.renderFromInstanceAnim;
+        }
     }
+
+    parsedScene.instances.clear();
+    parsedScene.instances.shrink_to_fit();
 
     // Accelerator
     Primitive accel = nullptr;

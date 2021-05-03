@@ -364,14 +364,12 @@ void ParsedScene::ObjectInstance(const std::string &name, FileLoc loc) {
             RenderFromObject(0) * worldFromRender, graphicsState.transformStartTime,
             RenderFromObject(1) * worldFromRender, graphicsState.transformEndTime);
 
-        instances.push_back(
-            InstanceSceneEntity(name, loc, animatedRenderFromInstance, nullptr));
+        instances.push_back(InstanceSceneEntity(name, loc, animatedRenderFromInstance));
     } else {
         const class Transform *renderFromInstance =
             transformCache.Lookup(RenderFromObject(0) * worldFromRender);
 
-        instances.push_back(
-            InstanceSceneEntity(name, loc, AnimatedTransform(), renderFromInstance));
+        instances.push_back(InstanceSceneEntity(name, loc, renderFromInstance));
     }
 }
 
@@ -433,11 +431,96 @@ void ParsedScene::EndOfFiles() {
             checkVec(as.parameters.GetParameterVector());
     }
 
+    LOG_VERBOSE("Scene stats: %d shapes, %d animated shapes, %d instance definitions, "
+                "%d instance uses, %d lights, %d float textures, %d spectrum textures, "
+                "%d named materials, %d materials",
+                shapes.size(), animatedShapes.size(), instanceDefinitions.size(),
+                instances.size(), lights.size(), floatTextures.size(),
+                spectrumTextures.size(), namedMaterials.size(), materials.size());
+
     // And complain about what's left.
     for (const std::string &s : unusedFloatTextures)
         LOG_VERBOSE("%s: float texture unused in scene", s);
     for (const std::string &s : unusedSpectrumTextures)
         LOG_VERBOSE("%s: spectrum texture unused in scene", s);
+}
+
+ParsedScene *ParsedScene::CopyForImport() {
+    ParsedScene *importScene = new ParsedScene;
+    importScene->renderFromWorld = renderFromWorld;
+    importScene->graphicsState = graphicsState;
+    importScene->currentBlock = currentBlock;
+    return importScene;
+}
+
+void ParsedScene::MergeImported(ParsedScene *importScene) {
+    while (!importScene->pushedGraphicsStates.empty()) {
+        ErrorExitDeferred("Missing end to AttributeBegin");
+        importScene->pushedGraphicsStates.pop_back();
+    }
+
+    errorExit |= importScene->errorExit;
+
+    // Reindex materials in shapes in importScene
+    size_t materialBase = materials.size(), lightBase = lights.size();
+    auto reindex = [materialBase, lightBase](auto &map) {
+        for (auto &shape : map) {
+            if (shape.materialName.empty())
+                shape.materialIndex += materialBase;
+            if (shape.lightIndex >= 0)
+                shape.lightIndex += lightBase;
+        }
+    };
+    reindex(importScene->shapes);
+    reindex(importScene->animatedShapes);
+    for (auto &inst : importScene->instanceDefinitions) {
+        reindex(inst.second.shapes);
+        reindex(inst.second.animatedShapes);
+    }
+
+    auto mergeMap = [this](auto &base, auto &imported, const char *name) {
+        for (const auto &item : imported) {
+            if (base.find(item.first) != base.end())
+                ErrorExitDeferred(&item.second.loc, "%s: multiply-defined %s.",
+                                  item.first, name);
+            base[item.first] = std::move(item.second);
+        }
+        imported.clear();
+    };
+    mergeMap(instanceDefinitions, importScene->instanceDefinitions, "object instance");
+    // mergeMap(namedCoordinateSystems, importScene->namedCoordinateSystems, "named
+    // coordinate system");
+
+    auto mergeSet = [this](auto &base, auto &imported, const char *name) {
+        for (const auto &item : imported) {
+            if (base.find(item) != base.end())
+                ErrorExitDeferred("%s: multiply-defined %s.", item, name);
+            base.insert(std::move(item));
+        }
+        imported.clear();
+    };
+    mergeSet(namedMaterialNames, importScene->namedMaterialNames, "named material");
+    mergeSet(floatTextureNames, importScene->floatTextureNames, "texture");
+    mergeSet(spectrumTextureNames, importScene->spectrumTextureNames, "texture");
+
+    auto mergeVector = [](auto &base, auto &imported) {
+        if (base.empty())
+            base = std::move(imported);
+        else {
+            base.reserve(base.size() + imported.size());
+            std::move(std::begin(imported), std::end(imported), std::back_inserter(base));
+            imported.clear();
+            imported.shrink_to_fit();
+        }
+    };
+    mergeVector(materials, importScene->materials);
+    mergeVector(namedMaterials, importScene->namedMaterials);
+    mergeVector(floatTextures, importScene->floatTextures);
+    mergeVector(spectrumTextures, importScene->spectrumTextures);
+    mergeVector(lights, importScene->lights);
+    mergeVector(shapes, importScene->shapes);
+    mergeVector(animatedShapes, importScene->animatedShapes);
+    mergeVector(instances, importScene->instances);
 }
 
 void ParsedScene::Option(const std::string &name, const std::string &value, FileLoc loc) {
@@ -607,14 +690,16 @@ void ParsedScene::Texture(const std::string &name, const std::string &type,
         return;
     }
 
+    std::set<std::string> &names =
+        (type == "float") ? floatTextureNames : spectrumTextureNames;
+    if (names.find(name) != names.end()) {
+        ErrorExitDeferred(&loc, "Redefining texture \"%s\".", name);
+        return;
+    }
+    names.insert(name);
+
     std::vector<std::pair<std::string, TextureSceneEntity>> &textures =
         (type == "float") ? floatTextures : spectrumTextures;
-
-    for (const auto &tex : textures)
-        if (tex.first == name) {
-            ErrorExitDeferred(&loc, "Redefining texture \"%s\".", name);
-            return;
-        }
 
     textures.push_back(std::make_pair(
         name, TextureSceneEntity(texname, std::move(dict), loc, RenderFromObject())));
@@ -637,12 +722,11 @@ void ParsedScene::MakeNamedMaterial(const std::string &name, ParsedParameterVect
     ParameterDictionary dict(std::move(params), graphicsState.materialAttributes,
                              graphicsState.colorSpace);
 
-    // Note: O(n). FIXME?
-    for (const auto &nm : namedMaterials)
-        if (nm.first == name) {
-            ErrorExitDeferred(&loc, "%s: named material redefined.", name);
-            return;
-        }
+    if (namedMaterialNames.find(name) != namedMaterialNames.end()) {
+        ErrorExitDeferred(&loc, "%s: named material redefined.", name);
+        return;
+    }
+    namedMaterialNames.insert(name);
 
     namedMaterials.push_back(std::make_pair(name, SceneEntity("", std::move(dict), loc)));
 }
@@ -763,7 +847,7 @@ NamedTextures ParsedScene::CreateTextures(Allocator alloc, bool gpu) const {
                     "Animated world to texture transforms are not supported. "
                     "Using start transform.");
 
-        if (tex.second.texName != "imagemap") {
+        if (tex.second.texName != "imagemap" && tex.second.texName != "ptex") {
             serialFloatTextures.push_back(i);
             continue;
         }
@@ -791,7 +875,7 @@ NamedTextures ParsedScene::CreateTextures(Allocator alloc, bool gpu) const {
                     "Animated world to texture transforms are not supported. "
                     "Using start transform.");
 
-        if (tex.second.texName != "imagemap") {
+        if (tex.second.texName != "imagemap" && tex.second.texName != "ptex") {
             serialSpectrumTextures.push_back(i);
             continue;
         }
@@ -1219,13 +1303,12 @@ void FormattingScene::Texture(const std::string &name, const std::string &type,
                             name);
                         return;
                     }
-                    if (p->numbers.size() != 3) {
+                    if (p->floats.size() != 3) {
                         ErrorExitDeferred(
                             &p->loc, "Didn't find 3 values for \"rgb\" \"%s\".", p->name);
                         return;
                     }
-                    if (p->numbers[0] != p->numbers[1] ||
-                        p->numbers[1] != p->numbers[2]) {
+                    if (p->floats[0] != p->floats[1] || p->floats[1] != p->floats[2]) {
                         ErrorExitDeferred(&p->loc,
                                           "Non-constant \"rgb\" value found for "
                                           "\"scale\" texture parameter \"%s\". Please "
@@ -1238,7 +1321,7 @@ void FormattingScene::Texture(const std::string &name, const std::string &type,
                     foundRGB = true;
                     p->type = "float";
                     p->name = "scale";
-                    p->numbers.resize(1);
+                    p->floats.resize(1);
                 } else {
                     if (foundTexture) {
                         ErrorExitDeferred(

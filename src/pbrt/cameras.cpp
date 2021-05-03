@@ -292,6 +292,9 @@ Camera Camera::Create(const std::string &name, const ParameterDictionary &parame
     else if (name == "stereoscopic") // P3D updates
         camera = StereoscopicCamera::Create(parameters, cameraTransform, film, medium, loc,
                                          alloc);
+    else if (name == "ODS") //P3D updates
+        camera = ODSCamera::Create(parameters, cameraTransform, film, medium, loc,
+                                         alloc);
     else
         ErrorExit(loc, "%s: camera type unknown.", name);
 
@@ -1771,5 +1774,65 @@ std::string AutoStereoscopicCamera::ToString() const {
                         BaseToString(), dxCamera, dyCamera, A, cosTotalWidth, eyeLocation);
 }
 // P3D Updates
+
+// P3D Updates
+
+// ODSCamera Method Definitions
+pstd::optional<CameraRay> ODSCamera::GenerateRay(CameraSample sample,
+                                                       SampledWavelengths &lambda) const {
+    
+    // Compute spherical camera ray direction
+    Point2f uv(sample.pFilm.x / film.FullResolution().x,
+               sample.pFilm.y / film.FullResolution().y);
+
+    // Compute ray direction using equirectangular mapping
+    Float theta = Pi * uv[1], phi = 2 * Pi * uv[0];
+   
+    // ray origin
+    float offset;
+    if(view == "left") offset = -1;
+    else offset = 1;
+    Point3f origin(std::cos(theta)* IPD / 2 * offset, 0, std::sin(theta)* IPD / 2 * offset);
+
+    // ray direction
+    Vector3f dir;
+    dir = SphericalDirection(std::sin(theta), std::cos(theta), phi);
+    pstd::swap(dir.y, dir.z);
+
+    Ray ray(origin, dir, SampleTime(sample.time), medium);
+    return CameraRay{RenderFromCamera(ray)};
+}
+
+ODSCamera *ODSCamera::Create(const ParameterDictionary &parameters,
+                                         const CameraTransform &cameraTransform,
+                                         Film film, Medium medium, const FileLoc *loc,
+                                         Allocator alloc) {
+
+    CameraBaseParameters cameraBaseParameters(cameraTransform, film, medium, parameters, loc);
+    Mapping mapping = EquiRectangular;
+
+    //view side
+    std::string defView = "left";
+    std::string view = parameters.GetOneString("view", defView);
+
+    if (view !="left" && view !="right") {
+        Warning("incorrect stereoscopic view = %s - left view assumed",
+            view.c_str());
+        view = defView;
+    }
+    //distance between eyes
+    Float IPD = parameters.GetOneFloat("eyeDistance", 0.065);
+
+    return alloc.new_object<ODSCamera>(cameraBaseParameters, mapping,view,IPD);
+}
+
+std::string ODSCamera::ToString() const {
+    return StringPrintf("[ ODSCamera %s mapping: %s ]", CameraBase::ToString(),
+                        mapping == EquiRectangular ? "EquiRectangular" : "EqualArea");
+}
+//P3D Updates
+
+
+
 
 }  // namespace pbrt

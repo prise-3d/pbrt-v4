@@ -42,6 +42,19 @@ enum class ParameterType {
 // SpectrumType Definition
 enum class SpectrumType { Albedo, Unbounded, Illuminant };
 
+inline std::string ToString(SpectrumType t) {
+    switch (t) {
+    case SpectrumType::Albedo:
+        return "Albedo";
+    case SpectrumType::Unbounded:
+        return "Unbounded";
+    case SpectrumType::Illuminant:
+        return "Illuminant";
+    default:
+        LOG_FATAL("Unhandled SpectrumType");
+    }
+}
+
 // NamedTextures Definition
 struct NamedTextures {
     std::map<std::string, FloatTexture> floatTextures;
@@ -96,6 +109,8 @@ class ParameterDictionary {
     const FileLoc *loc(const std::string &) const;
 
     const ParsedParameterVector &GetParameterVector() const { return params; }
+
+    void FreeParameters();
 
     Float GetOneFloat(const std::string &name, Float def) const;
     int GetOneInt(const std::string &name, int def) const;
@@ -155,6 +170,7 @@ class ParameterDictionary {
     // ParameterDictionary Private Members
     ParsedParameterVector params;
     const RGBColorSpace *colorSpace = nullptr;
+    int nOwnedParams;
 };
 
 // TextureParameterDictionary Definition

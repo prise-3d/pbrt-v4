@@ -680,6 +680,50 @@ class AutoStereoscopicCamera : public PerspectiveCamera {
 };
 // P3D updates
 
+//P3D updates
+
+// ODSCamera declaration
+//(OmniDirectional Stereoscopic Camera)
+class ODSCamera : public SphericalCamera {
+  public:
+
+    // SphericalCamera Public Methods
+    ODSCamera(CameraBaseParameters baseParameters, Mapping mapping,const std::string view,const float IPD)
+        : SphericalCamera(baseParameters, mapping) {
+
+        this->view = view;
+        this->IPD = IPD;
+
+        // Compute minimum differentials for _SphericalCamera_
+        FindMinimumDifferentials(this);
+    }
+
+    static ODSCamera *Create(const ParameterDictionary &parameters,
+                                   const CameraTransform &cameraTransform, Film film,
+                                   Medium medium, const FileLoc *loc,
+                                   Allocator alloc = {});
+
+    PBRT_CPU_GPU
+    pstd::optional<CameraRay> GenerateRay(CameraSample sample,
+                                          SampledWavelengths &lambda) const;
+
+    PBRT_CPU_GPU
+    pstd::optional<CameraRayDifferential> GenerateRayDifferential(
+        CameraSample sample, SampledWavelengths &lambda) const {
+        return CameraBase::GenerateRayDifferential(this, sample, lambda);
+    }
+
+    std::string ToString() const;
+
+    private:
+    Mapping mapping;
+    std::string view;
+    float IPD;
+};
+
+//P3D updates
+
+
 inline pstd::optional<CameraRay> Camera::GenerateRay(CameraSample sample,
                                                      SampledWavelengths &lambda) const {
     auto generate = [&](auto ptr) { return ptr->GenerateRay(sample, lambda); };

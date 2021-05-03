@@ -46,6 +46,10 @@ std::unique_ptr<Estimator> Estimator::Create(const std::string &name) {
         estimator = std::make_unique<PakMONEstimator>(name);
     else if (name == "mean-or-mon")
         estimator = std::make_unique<MeanOrMONEstimator>(name);
+    else if (name == "abmm")
+        estimator = std::make_unique<ABMMEstimator>(name);
+    else if (name == "gabmm")
+        estimator = std::make_unique<GABMMEstimator>(name);
     else {
         printf("%s: estimator type unknown. Use of default: mean", name.c_str());
         estimator = std::make_unique<MeanEstimator>(name);
@@ -83,6 +87,89 @@ void MeanEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &we
             splatRGB[i] = splatRGB[i] + pixelWindow.buffers[j].splatRGB[i];
         }
     }
+};
+
+
+void ABMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const {
+    this->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1.);
+};
+
+void ABMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB, Float alpha) const
+{
+    
+    weightSum = 0.;
+
+    // get each weightSum of pixelMoN
+    for (int j = 0; j < pixelWindow.windowSize; j++) {
+        weightSum += pixelWindow.buffers[j].weightSum;
+    }
+
+    // based on channel numbers
+    for (int i = 0; i < 3; i++) {
+
+        // loop over pixels (used as means storage) for computing real channel value
+        rgb[i] = 0.;
+        splatRGB[i] = 0.;
+        
+        Float sum = 0.;
+        Float squaredSum = 0;
+        Float cubicSum = 0;
+
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            rgb[i] += pixelWindow.buffers[j].rgbSum[i];
+            sum += pixelWindow.buffers[j].rgbSum[i];
+            splatRGB[i] = splatRGB[i] + pixelWindow.buffers[j].splatRGB[i];
+            squaredSum += pixelWindow.buffers[j].squaredSum[i];
+            cubicSum += pixelWindow.buffers[j].cubicSum[i];
+        }
+
+        if (sum > 0.) {
+            // computation of different moments
+            int n = pixelWindow.nsamples; // using nsamples
+
+            Float mean = sum / n; // M1
+            Float onlineM2 = (squaredSum / n) - (mean * mean); // M2
+            Float stdTheta = std::sqrt(onlineM2);
+
+            Float onlineM3 = (cubicSum - 3 * mean * squaredSum) / n + 2 * (mean * mean * mean);
+            Float onlineSkew = onlineM3 / std::pow(onlineM2, 1.5);
+
+            // std::cout << "------------------------" << std::endl;
+            // std::cout << "Weight is: " << n << std::endl;
+            // std::cout << "Sum is: " << sum << std::endl;
+            // std::cout << "SquaredSum is: " << squaredSum << std::endl;
+            // std::cout << "CubicSum is: " << cubicSum << std::endl;
+            // std::cout << "Mean is: " << mean << std::endl;
+            // std::cout << "M2 is: " << onlineM2 << std::endl;
+            // std::cout << "M3 is: " << onlineM3 << std::endl;
+            // std::cout << "Skew is: " << onlineSkew << std::endl;
+            Float aBMM = mean - ((1. / 3.) * (stdTheta / (n * alpha + 2))) * onlineSkew;
+            // std::cout << "Estimation is: " << aBBM << std::endl;
+            rgb[i] = aBMM * n;
+        }
+    }
+};
+
+void GABMMEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
+{
+    // for each channel number
+    Float giniSum = 0;
+
+    for (int i = 0; i < 3; i++) {
+
+        pstd::vector<Float> cvalues;
+
+        for (int j = 0; j < pixelWindow.windowSize; j++) {
+            cvalues.push_back(pixelWindow.buffers[j].rgbSum[i] / pixelWindow.buffers[j].weightSum);
+        }
+
+        giniSum += this->getGini(cvalues);
+    }
+
+    Float giniMean = giniSum / 3.;
+
+    // use of gini ean for estimate
+    aBMMEstimator->Estimate(pixelWindow, rgb, weightSum, splatRGB, 1. - giniMean);
 };
 
 void MONEstimator::Estimate(const PixelWindow &pixelWindow, RGB &rgb, Float &weightSum, AtomicDouble* splatRGB) const
