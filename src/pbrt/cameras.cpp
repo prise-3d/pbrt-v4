@@ -1826,6 +1826,16 @@ ODSCamera *ODSCamera::Create(const ParameterDictionary &parameters,
     //distance between eyes
     Float IPD = parameters.GetOneFloat("eyeDistance", 0.065);
 
+    // 3. Update output name file with `left` or `right`
+    size_t pos = film.GetFilename().find_last_of('.');// extension position
+    if(pos==std::string::npos){
+        film.SetFilename(film.GetFilename().append("-"));
+        film.SetFilename(film.GetFilename().append(view));
+    }else{
+        film.SetFilename(film.GetFilename().insert(pos, "-"));
+        film.SetFilename(film.GetFilename().insert(pos+1, view));
+    }
+
     return alloc.new_object<ODSCamera>(cameraBaseParameters, mapping,offset,IPD);
 }
 
