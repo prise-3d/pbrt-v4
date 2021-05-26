@@ -41,7 +41,7 @@ Extended command line parameter:
 Custom version [Features]
 -------------------------
 
-#### Stereoscopic, AutoStereoscopic, and OmnidirectionalStereoscopic (ODS) cameras
+#### Stereoscopic, AutoStereoscopic, and OmniDirectionalStereoscopic (ODS) cameras
 
 Stereocopic camera example into `.pbrt` file:
 ```
