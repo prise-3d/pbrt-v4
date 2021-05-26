@@ -68,7 +68,7 @@ Camera "ODS" "float fov" 50
         "string view" "right" 
 #        "string view" "left" 
        "float eyeDistance" [0.065]  
-
+```
 **Note:** it is necessary to generate the right and left images separately.
 
 
