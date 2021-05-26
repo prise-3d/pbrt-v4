@@ -41,7 +41,7 @@ Extended command line parameter:
 Custom version [Features]
 -------------------------
 
-#### Stereoscopic and AutoStereoscopic cameras
+#### Stereoscopic, AutoStereoscopic, and OmnidirectionalStereoscopic (ODS) cameras
 
 Stereocopic camera example into `.pbrt` file:
 ```
@@ -61,6 +61,16 @@ Camera "autostereoscopic" "float fov" 50
        "integer nbView" [8]
        "float eyeDistance" [0.065]
 ```
+
+ODS camera example into `.pbrt` file:
+```
+Camera "ODS" "float fov" 50
+        "string view" "right" 
+#        "string view" "left" 
+       "float eyeDistance" [0.065]  
+
+**Note:** it is necessary to generate the right and left images separately.
+
 
 **Note:** only one view can be generated each time. The calculated view is based on the desired number of views but also on the distance fixed at eye level.
 
