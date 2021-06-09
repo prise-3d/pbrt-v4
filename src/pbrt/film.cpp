@@ -29,6 +29,7 @@
 #include <pbrt/util/transform.h>
 
 #include <sys/stat.h>
+// #include <cmath>
 #include <fstream>
 
 namespace pbrt {
@@ -564,6 +565,165 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     LOG_VERBOSE("Converting image to RGB and computing final weighted pixel values");
     PixelFormat format = writeFP16 ? PixelFormat::Half : PixelFormat::Float;
     Image image(format, Point2i(pixelBounds.Diagonal()), {"R", "G", "B"});
+
+    // Compute n_j here for each pixels
+    ParallelFor2D(pixelBounds, [&](Point2i p) {
+
+        std::cout << "Compute n_js for " << p << std::endl;
+
+        PixelWindow &pixelWindow = pixels[p];
+
+        int N = pixelWindow.totalSamples;
+  
+        for (int i = 0; i < 3; i++) {
+
+            for (int baseIndex = 0; pixelWindow.windowSize; baseIndex++) {
+
+                // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
+                double lowerScale = pixelWindow.cascadeBase * (baseIndex + 1);
+
+                // N / kappa / b^i_<curr>;
+                double currScale = N / pixelWindow.k / lowerScale;
+
+                pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex].rgbSum[i] * currScale;
+
+                // if has picture
+                if (baseIndex - 1 > 0)
+                    pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex - 1].rgbSum[i] / (currScale * pixelWindow.cascadeBase);
+
+                if (baseIndex + 1 >= pixelWindow.windowSize)
+                    pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex + 1].rgbSum[i] / (currScale / pixelWindow.cascadeBase);
+            }
+        }
+    });
+
+    ParallelFor2D(pixelBounds, [&](Point2i p) {
+
+        PixelWindow &pixelWindow = pixels[p];
+
+        std::cout << "Compute approximation for " << p << std::endl;
+
+        int N = pixelWindow.totalSamples;
+        double oneOverK = 1 / pixelWindow.k;
+
+        for (int i = 0; i < 3; i++) {
+            
+            for (int baseIndex = 0; pixelWindow.windowSize; baseIndex++) {
+                
+                // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
+
+                double n_j = pixelWindow.buffers[baseIndex].n_j[i];
+                // n_bar_j (outlier detection criterion)
+                double n_bar_j = 0;
+
+                int r = 1; // kernel size
+                int y = -r;
+                for (int j = 0; j < 3; ++j) { // 3 x 3 Kernel
+                    int x = -r;
+                    for (int k = 0; k < 3; ++k) { // // 3 x 3 Kernel
+                        
+                        // Get n_j value from neighbor pixel
+                        // std::cout << "x: " << x << ", y:" << y << std::endl;
+                        Point2i xy = Point2i(p.x + x, p.y + y);
+
+                        if (InsideExclusive(xy, pixelBounds)) {
+                            PixelWindow &neighborPixelWindow = pixels[xy];
+
+                            // add directly computed n_j
+                            n_bar_j += neighborPixelWindow.buffers[baseIndex].n_j[i];
+                        }
+                        
+                        if (++x > r) break;
+                    }
+                    if (++y > r) break;
+                }
+
+                // average of n_bar_j obtained from pixel neighborhood
+                n_bar_j /= double((2*r+1)*(2*r+1));
+
+                // std::cout << "n_bar_j is: " << n_bar_j << " for " << pFilm << std::endl;
+                double lowerScale = pixelWindow.cascadeBase * (baseIndex + 1);
+                double currScale = N / pixelWindow.k / lowerScale;
+
+                double reliability = n_bar_j - oneOverK;
+ 
+                // check if above minimum sampling threshold
+                if (reliability >= 0.)
+                    // then use per-pixel reliability
+                    reliability = n_j - oneOverK;
+
+                double colorReliability = pixelWindow.rgbSum[i] * currScale;
+
+                // a minimum image brightness that we always consider reliable
+                colorReliability = std::max(colorReliability, 0.05 * currScale);
+
+                // if not interested in exact expected value estimation, can usually accept a bit
+                // more variance relative to the image brightness we already have
+                float optimizeForError = std::max(.0, std::min(1., oneOverK));
+
+                // allow up to ~<cascadeBase> more energy in one sample to lessen bias in some cases
+                // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
+                // colorReliability *= std::lerp(std::lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
+                
+                reliability = (reliability + colorReliability) * .5;
+                reliability = std::clamp(reliability, 0., 1.);
+                
+                // allow re-weighting to be disabled esily for the viewer demo
+                if (!(oneOverK < 1000000.)) // 1e6
+                    reliability = 1.;
+
+                // TODO: check if currentScale is needed
+                pixelWindow.rgbSum[i] += reliability * (pixelWindow.buffers[baseIndex].rgbSum[i] * currScale / N);
+                    
+                // Previous work...
+                /////////
+                // PART 3 : escape or not outlier value (based on kappa parameter)
+                /////////
+
+                // double r_star = N / n_bar_j; // approximated r*(S_i)
+
+                // // std::cout << "r_star: " << r_star << std::endl;
+                // // std::cout << "N / pixelWindow.k: " << N / pixelWindow.k << std::endl;
+
+                // if (r_star > (N / pixelWindow.k)) {
+                //     // std::cout << "Reject sample (outlier detected)" << std::endl;
+                //     continue;
+                // }
+
+                /////////
+                // PART 4 : Add sample with specific weighted param
+                /////////
+
+                // Compute the expected weight for current sample
+                // Float rc_Si = N / (pixelWindow.n_j - pixelWindow.kmin); // N / (n_j - k_{min})
+
+                // depending of first sample or not, do something different
+                // if (pixelWindow.nsamples == 0) {
+                    
+                //     Float wc;
+
+                //     // wc 
+                //     if (pixelWindow.n_j < (pixelWindow.k + pixelWindow.kmin))
+                //         wc = (pixelWindow.n_j - pixelWindow.kmin) / pixelWindow.k;
+                //     else
+                //         wc = N / (pixelWindow.k * rc_Si);
+
+                //     if (wc > 0.) {
+                //         hasContribution = true;
+                //         pixelWindow.rgbSum[i] += (1. / N) * wc * luminance;
+                //     }
+                // } else {
+
+                //     Float rv_Si = lowerScale / pixelWindow.rgbSum[i]; // b^j / E_{min}[F]
+                //     Float r_si = std::min(rc_Si, rv_Si);
+                //     Float w = N / (pixelWindow.k * r_si);
+
+                //     if (w > 0.)
+                //         pixelWindow.rgbSum[i] += (1. / N) * w * luminance;
+                // }
+            }
+        }
+    });
 
     std::atomic<int> nClamped{0};
     ParallelFor2D(pixelBounds, [&](Point2i p) {

@@ -47,6 +47,7 @@ struct PixelBuffer {
     // here we store the rgbSum of pixel
     double rgbSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
+    double n_j[3] = {0., 0., 0.};
     double weightSum = 0.;
 
     void Clear() {
@@ -54,6 +55,7 @@ struct PixelBuffer {
         for (int i = 0; i < 3; i++) {
             rgbSum[i] = 0.;
             splatRGB[i] = 0.;
+            n_j[i] = 0.;
         }
 
         weightSum = 0.;
@@ -70,14 +72,13 @@ struct PixelWindow {
     int windowSize = maxnbuffers; // number of buffers clusters
     int nsamples = 0; // keep track of real added nsamples;
     double rgbSum[3] = {0., 0., 0.}; 
-    double mean[3] = {0., 0., 0.}; 
 
     double weightSum = 0;
     AtomicDouble splatRGB[3];
     double cascadeStart = 1;
     double cascadeBase = 8;
     int kmin = 1;
-    int k = 100;
+    int k = 32;
     int totalSamples = *Options->pixelSamples * *Options->nimages;
 };
 
