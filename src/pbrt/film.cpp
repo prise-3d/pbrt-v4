@@ -569,18 +569,17 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     // Compute n_j here for each pixels
     ParallelFor2D(pixelBounds, [&](Point2i p) {
 
-        std::cout << "Compute n_js for " << p << std::endl;
-
         PixelWindow &pixelWindow = pixels[p];
 
         int N = pixelWindow.totalSamples;
   
         for (int i = 0; i < 3; i++) {
+            
+            // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
+            double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
+            int baseIndex = 0;
 
-            for (int baseIndex = 0; pixelWindow.windowSize; baseIndex++) {
-
-                // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
-                double lowerScale = pixelWindow.cascadeBase * (baseIndex + 1);
+            while (baseIndex < pixelWindow.windowSize - 2) {
 
                 // N / kappa / b^i_<curr>;
                 double currScale = N / pixelWindow.k / lowerScale;
@@ -593,6 +592,10 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
                 if (baseIndex + 1 >= pixelWindow.windowSize)
                     pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex + 1].rgbSum[i] / (currScale / pixelWindow.cascadeBase);
+
+                // TODO : check if lower scale is correct
+                lowerScale *= pixelWindow.cascadeBase;
+                ++baseIndex;
             }
         }
     });
@@ -601,18 +604,19 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
         PixelWindow &pixelWindow = pixels[p];
 
-        std::cout << "Compute approximation for " << p << std::endl;
-
         int N = pixelWindow.totalSamples;
         double oneOverK = 1 / pixelWindow.k;
 
         for (int i = 0; i < 3; i++) {
             
-            for (int baseIndex = 0; pixelWindow.windowSize; baseIndex++) {
+            double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
+            int baseIndex = 0;
+
+            while (baseIndex < pixelWindow.windowSize - 2) {
                 
                 // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
-
                 double n_j = pixelWindow.buffers[baseIndex].n_j[i];
+
                 // n_bar_j (outlier detection criterion)
                 double n_bar_j = 0;
 
@@ -641,8 +645,6 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // average of n_bar_j obtained from pixel neighborhood
                 n_bar_j /= double((2*r+1)*(2*r+1));
 
-                // std::cout << "n_bar_j is: " << n_bar_j << " for " << pFilm << std::endl;
-                double lowerScale = pixelWindow.cascadeBase * (baseIndex + 1);
                 double currScale = N / pixelWindow.k / lowerScale;
 
                 double reliability = n_bar_j - oneOverK;
@@ -652,6 +654,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                     // then use per-pixel reliability
                     reliability = n_j - oneOverK;
 
+                // now add current scale to current color reliability
                 double colorReliability = pixelWindow.rgbSum[i] * currScale;
 
                 // a minimum image brightness that we always consider reliable
@@ -668,13 +671,22 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
                 
-                // allow re-weighting to be disabled esily for the viewer demo
+                // allow re-weighting to be disabled easily
                 if (!(oneOverK < 1000000.)) // 1e6
                     reliability = 1.;
 
-                // TODO: check if currentScale is needed
-                pixelWindow.rgbSum[i] += reliability * (pixelWindow.buffers[baseIndex].rgbSum[i] * currScale / N);
+                // TODO: check if currentScale is needed or not there (scale use on previous computation)
+                // See computation of n_j and n_bar_j:
+                // - vec4 c = texture2D(layer, (coord + vec2(x, y)) / size, 0.);
+			    // - c *= scale;
+			    // - val += c;
+            
+                pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i];
                     
+                // TODO : check if lower scale is correct
+                lowerScale *= pixelWindow.cascadeBase;
+                ++baseIndex;
+
                 // Previous work...
                 /////////
                 // PART 3 : escape or not outlier value (based on kappa parameter)

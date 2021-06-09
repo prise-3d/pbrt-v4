@@ -294,8 +294,8 @@ class RGBFilm : public FilmBase {
         for (int i = 0; i < 3; i++) {
 
             // loop over pixels (used as means storage) for computing real channel value
-            rgb[i] = pixelWindow.rgbSum[i];
-            splatRGB[i] = Float(pixelWindow.splatRGB[i]);
+            rgb[i] = pixelWindow.rgbSum[i] / pixelWindow.totalSamples;
+            splatRGB[i] = Float(pixelWindow.splatRGB[i]) / pixelWindow.totalSamples;
         }
 
         // Convert _rgb_ to output RGB color space
@@ -321,8 +321,6 @@ class RGBFilm : public FilmBase {
 
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
-        // std::cout << "Add sample into " << pFilm << std::endl;
-
 
         // for each channel splat sample S_i into two buffers cascade and get weigthed sample value
         for (int i = 0; i < 3; i ++) {
