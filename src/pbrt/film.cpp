@@ -29,7 +29,7 @@
 #include <pbrt/util/transform.h>
 
 #include <sys/stat.h>
-// #include <cmath>
+#include <cmath>
 #include <fstream>
 
 namespace pbrt {
@@ -615,7 +615,6 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
             while (baseIndex < pixelWindow.windowSize - 2) {
                 
                 // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
-                double n_j = pixelWindow.buffers[baseIndex].n_j[i];
 
                 // n_bar_j (outlier detection criterion)
                 double n_bar_j = 0;
@@ -642,6 +641,8 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                     if (++y > r) break;
                 }
 
+                double n_j = pixelWindow.buffers[baseIndex].n_j[i];
+
                 // average of n_bar_j obtained from pixel neighborhood
                 n_bar_j /= double((2*r+1)*(2*r+1));
 
@@ -662,12 +663,16 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
                 // if not interested in exact expected value estimation, can usually accept a bit
                 // more variance relative to the image brightness we already have
-                float optimizeForError = std::max(.0, std::min(1., oneOverK));
+                double optimizeForError = std::max(.0, std::min(1., oneOverK));
 
                 // allow up to ~<cascadeBase> more energy in one sample to lessen bias in some cases
                 // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
                 // colorReliability *= std::lerp(std::lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
-                
+
+                // a + t(a - b)
+                // double a = 1. + pixelWindow.windowSize * 1 - pixelWindow.windowSize * pixelWindow.cascadeBase;
+                // colorReliability *= a + optimizeForError * a - optimizeForError * 1.;
+
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
                 
@@ -680,7 +685,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // - vec4 c = texture2D(layer, (coord + vec2(x, y)) / size, 0.);
 			    // - c *= scale;
 			    // - val += c;
-            
+
                 pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i];
                     
                 // TODO : check if lower scale is correct
