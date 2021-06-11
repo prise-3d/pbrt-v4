@@ -289,13 +289,14 @@ class RGBFilm : public FilmBase {
 
         // Post process
         weightSum = pixelWindow.weightSum;
+        int bufferIndex = *Options->currentBuffer;
 
         // based on channel numbers
         for (int i = 0; i < 3; i++) {
 
             // loop over pixels (used as means storage) for computing real channel value
-            rgb[i] = pixelWindow.rgbSum[i] / pixelWindow.totalSamples;
-            splatRGB[i] = Float(pixelWindow.splatRGB[i]) / pixelWindow.totalSamples;
+            rgb[i] = pixelWindow.buffers[bufferIndex].rgbSum[i] / pixelWindow.totalSamples;
+            splatRGB[i] = Float(pixelWindow.buffers[bufferIndex].splatRGB[i]) / pixelWindow.totalSamples;
         }
 
         // Convert _rgb_ to output RGB color space
@@ -345,7 +346,7 @@ class RGBFilm : public FilmBase {
                 upperScale *= pixelWindow.cascadeBase;
                 ++baseIndex;
             }
-
+            
             // buffers are (<baseIndex>, <baseIndex>+1) where to add splatting samples
 
             /* weight for lower buffer */
@@ -365,6 +366,9 @@ class RGBFilm : public FilmBase {
             // Now we add samples with the corresponding weight into cascade B_j and B_j + 1
             pixelWindow.buffers[baseIndex].rgbSum[i] += luminance * weightLower;
             pixelWindow.buffers[baseIndex + 1].rgbSum[i] += luminance * weightUppper;
+
+            pixelWindow.buffers[baseIndex].weightSum += weightLower;
+            pixelWindow.buffers[baseIndex + 1].weightSum += weightUppper;
         }
     }
 

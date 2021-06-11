@@ -550,8 +550,11 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imag
 
     // build folder
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + std::to_string(*Options->currentBuffer)  + "_" + indexStr + filename_postfix;
+    std::cout << "Save image: " << temp_filename << std::endl;
     
+    *Options->currentBuffer = *Options->currentBuffer + 1;
+
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);
     mkdir(folder_image.c_str(), 0775);
@@ -567,7 +570,8 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     Image image(format, Point2i(pixelBounds.Diagonal()), {"R", "G", "B"});
 
     // Compute n_j here for each pixels
-    ParallelFor2D(pixelBounds, [&](Point2i p) {
+    // In order to quick compute n_bar_j later (global reliability)
+    /*ParallelFor2D(pixelBounds, [&](Point2i p) {
 
         PixelWindow &pixelWindow = pixels[p];
 
@@ -580,6 +584,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
             int baseIndex = 0;
 
             while (baseIndex < pixelWindow.windowSize - 2) {
+                lowerScale *= pixelWindow.cascadeBase;
 
                 // N / kappa / b^i_<curr>;
                 double currScale = N / pixelWindow.k / lowerScale;
@@ -594,7 +599,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                     pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex + 1].rgbSum[i] / (currScale / pixelWindow.cascadeBase);
 
                 // TODO : check if lower scale is correct
-                lowerScale *= pixelWindow.cascadeBase;
+                // lowerScale *= pixelWindow.cascadeBase;
                 ++baseIndex;
             }
         }
@@ -615,6 +620,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
             while (baseIndex < pixelWindow.windowSize - 2) {
                 
                 // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
+                lowerScale *= pixelWindow.cascadeBase;
 
                 // n_bar_j (outlier detection criterion)
                 double n_bar_j = 0;
@@ -663,7 +669,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
                 // if not interested in exact expected value estimation, can usually accept a bit
                 // more variance relative to the image brightness we already have
-                double optimizeForError = std::max(.0, std::min(1., oneOverK));
+                // double optimizeForError = std::max(.0, std::min(1., oneOverK));
 
                 // allow up to ~<cascadeBase> more energy in one sample to lessen bias in some cases
                 // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
@@ -686,10 +692,9 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 			    // - c *= scale;
 			    // - val += c;
 
-                pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i];
+                pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i] * (currScale / N);
                     
                 // TODO : check if lower scale is correct
-                lowerScale *= pixelWindow.cascadeBase;
                 ++baseIndex;
 
                 // Previous work...
@@ -740,7 +745,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // }
             }
         }
-    });
+    });*/
 
     std::atomic<int> nClamped{0};
     ParallelFor2D(pixelBounds, [&](Point2i p) {

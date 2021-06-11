@@ -255,7 +255,11 @@ void ImageTileIntegrator::Render() {
             }
             
             ImageMetadata metadata; // by default empty metadata
-            camera.GetFilm().WriteImage(metadata, 1.0f / waveStart, imageCounter);
+
+            // TODO: here save all B images
+            for(int i = 0;  i < pbrt::maxnbuffers; i++)
+                camera.GetFilm().WriteImage(metadata, 1.0f / waveStart, imageCounter);
+                
             imageCounter++;
 
             // Update seed if necessary for next image

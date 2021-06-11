@@ -35,10 +35,11 @@ struct PBRTOptions : BasicPBRTOptions {
     bool recordPixelStatistics = false;
     pstd::optional<int> pixelSamples;
     pstd::optional<int> nimages = 1; // P3D updates: use of number of images to generate
+    pstd::optional<int> nbuffers = 6; // P3D updates: use of number of images to generate
+    pstd::optional<int> currentBuffer = 0; // P3D updates: use of number of images to generate
     pstd::optional<int> startIndex = 0; // P3D updates: index of image to start with
     pstd::optional<int> ndigits = 6; // P3D updates: number of digits for file format
     pstd::optional<int> gpuDevice;
-    // pstd::optional<int> nbuffers = 1; // P3D Update: k mon parameter (default 1, no nbuffers use, hence classical mean)
     std::string estimator = "mean"; // P3D update estimator parameter (default mean)
     pstd::optional<int> independent = 1; // P3D use of dependant or independant image saving
     bool quickRender = false;
