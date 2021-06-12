@@ -257,6 +257,34 @@ class RGBFilm : public FilmBase {
     };
 
     PBRT_CPU_GPU
+    double getReliability(Point2i p, int baseIndex, int channel, int r, double scale) {
+        
+        double val = 0.;
+
+        int y = -r;
+        for (int j = 0; j < 3; ++j) { // 3 x 3 Kernel
+            int x = -r;
+            for (int k = 0; k < 3; ++k) { // // 3 x 3 Kernel
+                
+                Point2i xy = Point2i(p.x + x, p.y + y);
+
+                if (InsideExclusive(xy, pixelBounds)) {
+                    PixelWindow &neighborPixelWindow = pixels[xy];
+
+                    // TODO : check if correct
+                    neighborPixelWindow.buffers[baseIndex].rgbSum[channel] *= scale;
+                    val += neighborPixelWindow.buffers[baseIndex].rgbSum[channel];
+                }
+                
+                if (++x > r) break;
+            }
+            if (++y > r) break;
+        }
+
+        return val / double((2*r+1)*(2*r+1));
+    }
+
+    PBRT_CPU_GPU
     RGB GetPixelRGB(const Point2i &p, Float splatScale = 1) const {
 
         // P3D Updates
@@ -289,14 +317,13 @@ class RGBFilm : public FilmBase {
 
         // Post process
         weightSum = pixelWindow.weightSum;
-        int bufferIndex = *Options->currentBuffer;
 
         // based on channel numbers
         for (int i = 0; i < 3; i++) {
 
             // loop over pixels (used as means storage) for computing real channel value
-            rgb[i] = pixelWindow.buffers[bufferIndex].rgbSum[i] / pixelWindow.totalSamples;
-            splatRGB[i] = Float(pixelWindow.buffers[bufferIndex].splatRGB[i]) / pixelWindow.totalSamples;
+            rgb[i] = pixelWindow.rgbSum[i];
+            splatRGB[i] = Float(pixelWindow.splatRGB[i]);
         }
 
         // Convert _rgb_ to output RGB color space
@@ -328,7 +355,7 @@ class RGBFilm : public FilmBase {
 
             double luminance = rgb[i];
 
-            double N = pixelWindow.totalSamples;
+            double N = pixelWindow.N;
             double lowerScale = pixelWindow.cascadeStart;
             double upperScale = lowerScale * pixelWindow.cascadeBase;
             double weightLower = 0;

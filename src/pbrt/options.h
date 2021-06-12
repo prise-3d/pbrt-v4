@@ -35,8 +35,6 @@ struct PBRTOptions : BasicPBRTOptions {
     bool recordPixelStatistics = false;
     pstd::optional<int> pixelSamples;
     pstd::optional<int> nimages = 1; // P3D updates: use of number of images to generate
-    pstd::optional<int> nbuffers = 6; // P3D updates: use of number of images to generate
-    pstd::optional<int> currentBuffer = 0; // P3D updates: use of number of images to generate
     pstd::optional<int> startIndex = 0; // P3D updates: index of image to start with
     pstd::optional<int> ndigits = 6; // P3D updates: number of digits for file format
     pstd::optional<int> gpuDevice;

@@ -550,11 +550,9 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imag
 
     // build folder
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + std::to_string(*Options->currentBuffer)  + "_" + indexStr + filename_postfix;
+    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "_" + indexStr + filename_postfix;
     std::cout << "Save image: " << temp_filename << std::endl;
     
-    *Options->currentBuffer = *Options->currentBuffer + 1;
-
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);
     mkdir(folder_image.c_str(), 0775);
@@ -575,7 +573,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
         PixelWindow &pixelWindow = pixels[p];
 
-        int N = pixelWindow.totalSamples;
+        int N = pixelWindow.N;
   
         for (int i = 0; i < 3; i++) {
             
@@ -583,7 +581,10 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
             double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
             int baseIndex = 0;
 
-            while (baseIndex < pixelWindow.windowSize - 2) {
+            // reset by default
+            pixelWindow.buffers[baseIndex].n_j[i] = 0.;
+
+            while (baseIndex < pixelWindow.windowSize - 1) {
                 lowerScale *= pixelWindow.cascadeBase;
 
                 // N / kappa / b^i_<curr>;
@@ -592,10 +593,10 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex].rgbSum[i] * currScale;
 
                 // if has picture
-                if (baseIndex - 1 > 0)
+                if (baseIndex - 1 >= 0)
                     pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex - 1].rgbSum[i] / (currScale * pixelWindow.cascadeBase);
 
-                if (baseIndex + 1 >= pixelWindow.windowSize)
+                if (baseIndex + 1 < pixelWindow.windowSize)
                     pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex + 1].rgbSum[i] / (currScale / pixelWindow.cascadeBase);
 
                 // TODO : check if lower scale is correct
@@ -603,57 +604,48 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 ++baseIndex;
             }
         }
-    });
+    });*/
 
     ParallelFor2D(pixelBounds, [&](Point2i p) {
 
         PixelWindow &pixelWindow = pixels[p];
 
-        int N = pixelWindow.totalSamples;
+        int N = pixelWindow.N;
         double oneOverK = 1 / pixelWindow.k;
 
         for (int i = 0; i < 3; i++) {
+
+            // reinitialize data for new output image
+            pixelWindow.rgbSum[i] = 0.;
             
             double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
             int baseIndex = 0;
 
-            while (baseIndex < pixelWindow.windowSize - 2) {
+            while (baseIndex < pixelWindow.windowSize - 1) {
                 
                 // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
                 lowerScale *= pixelWindow.cascadeBase;
 
-                // n_bar_j (outlier detection criterion)
-                double n_bar_j = 0;
-
-                int r = 1; // kernel size
-                int y = -r;
-                for (int j = 0; j < 3; ++j) { // 3 x 3 Kernel
-                    int x = -r;
-                    for (int k = 0; k < 3; ++k) { // // 3 x 3 Kernel
-                        
-                        // Get n_j value from neighbor pixel
-                        // std::cout << "x: " << x << ", y:" << y << std::endl;
-                        Point2i xy = Point2i(p.x + x, p.y + y);
-
-                        if (InsideExclusive(xy, pixelBounds)) {
-                            PixelWindow &neighborPixelWindow = pixels[xy];
-
-                            // add directly computed n_j
-                            n_bar_j += neighborPixelWindow.buffers[baseIndex].n_j[i];
-                        }
-                        
-                        if (++x > r) break;
-                    }
-                    if (++y > r) break;
-                }
-
-                double n_j = pixelWindow.buffers[baseIndex].n_j[i];
-
-                // average of n_bar_j obtained from pixel neighborhood
-                n_bar_j /= double((2*r+1)*(2*r+1));
-
                 double currScale = N / pixelWindow.k / lowerScale;
 
+                // n_bar_j (outlier detection criterion)
+                double n_bar_j = 0;
+                double n_j = 0.;
+
+                n_j += getReliability(p, baseIndex, i, 0, currScale);
+                n_bar_j += getReliability(p, baseIndex, i, 1, currScale);
+
+                // if has picture
+                if (baseIndex - 1 >= 0) {
+                    n_j += getReliability(p, baseIndex - 1, i, 0, currScale * pixelWindow.cascadeBase);
+                    n_bar_j += getReliability(p, baseIndex - 1, i, 1, currScale * pixelWindow.cascadeBase);
+                }
+
+                if (baseIndex + 1 < pixelWindow.windowSize) {
+                    n_j += getReliability(p, baseIndex + 1, i, 0, currScale / pixelWindow.cascadeBase);
+                    n_bar_j += getReliability(p, baseIndex + 1, i, 1, currScale / pixelWindow.cascadeBase);
+                }
+   
                 double reliability = n_bar_j - oneOverK;
  
                 // check if above minimum sampling threshold
@@ -669,15 +661,15 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
                 // if not interested in exact expected value estimation, can usually accept a bit
                 // more variance relative to the image brightness we already have
-                // double optimizeForError = std::max(.0, std::min(1., oneOverK));
+                double optimizeForError = std::max(.0, std::min(1., oneOverK));
 
                 // allow up to ~<cascadeBase> more energy in one sample to lessen bias in some cases
                 // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
-                // colorReliability *= std::lerp(std::lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
+                // $x \times (1 - a) + y \times a$
 
-                // a + t(a - b)
-                // double a = 1. + pixelWindow.windowSize * 1 - pixelWindow.windowSize * pixelWindow.cascadeBase;
-                // colorReliability *= a + optimizeForError * a - optimizeForError * 1.;
+                //colorReliability *= mix(mix(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
+                double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
+                colorReliability *= x * (1. - optimizeForError) + 1. * optimizeForError;
 
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
@@ -692,9 +684,12 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 			    // - c *= scale;
 			    // - val += c;
 
-                pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i] * (currScale / N);
+                // Divided by N the current buffer data
+                // std::cout << p << "[" << baseIndex << "]: " << reliability << std::endl;
+                pixelWindow.rgbSum[i] += reliability * (pixelWindow.buffers[baseIndex].rgbSum[i] / N);
                     
                 // TODO : check if lower scale is correct
+                // lowerScale *= pixelWindow.cascadeBase;
                 ++baseIndex;
 
                 // Previous work...
@@ -745,7 +740,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // }
             }
         }
-    });*/
+    });
 
     std::atomic<int> nClamped{0};
     ParallelFor2D(pixelBounds, [&](Point2i p) {

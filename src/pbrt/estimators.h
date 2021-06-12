@@ -47,7 +47,6 @@ struct PixelBuffer {
     // here we store the rgbSum of pixel
     double rgbSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
-    double n_j[3] = {0., 0., 0.};
     double weightSum = 0.;
 
     void Clear() {
@@ -55,7 +54,6 @@ struct PixelBuffer {
         for (int i = 0; i < 3; i++) {
             rgbSum[i] = 0.;
             splatRGB[i] = 0.;
-            n_j[i] = 0.;
         }
 
         weightSum = 0.;
@@ -76,10 +74,10 @@ struct PixelWindow {
     double weightSum = 0;
     AtomicDouble splatRGB[3];
     double cascadeStart = 1;
-    double cascadeBase = 8;
+    double cascadeBase = std::pow(262144, 1. / (double)maxnbuffers); // change using b = j^sqrt(S_{max}) where S_{max} = 262144
     int kmin = 1;
     int k = 32;
-    int totalSamples = *Options->pixelSamples * *Options->nimages;
+    int N = *Options->pixelSamples * *Options->nimages;
 };
 
 // Base Estimator class
