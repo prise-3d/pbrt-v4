@@ -214,7 +214,12 @@ class FilmBase {
 
     // P3D Updates
     void SetFilename(std::string filename) { this->filename = filename; }
-    
+
+    // P3D Updates 
+    // compute std of current film
+    void computeStd() { }
+
+
     PBRT_CPU_GPU
     SampledWavelengths SampleWavelengths(Float u) const {
         return SampledWavelengths::SampleXYZ(u);
@@ -246,8 +251,8 @@ class RGBFilm : public FilmBase {
         ParallelFor2D(pixelBounds, [&](Point2i p) {
             for (int i = 0; i < pixels[p].windowSize; i++) {
                 pixels[p].buffers[i].Clear();
-                pixels[p].varianceEstimator = VarianceEstimator<Float>();
             }
+            pixels[p].varianceEstimator = VarianceEstimator<Float>();
         }); 
     };
 
@@ -265,14 +270,37 @@ class RGBFilm : public FilmBase {
         RGB rgb(0, 0, 0);
         Float weightSum = 0.;
 
-        estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
+        // estimator->Estimate(pixelWindow, rgb, weightSum, splatRGB);
         
-        if (weightSum != 0)
-            rgb /= weightSum;
+        // if (weightSum != 0)
+        //     rgb /= weightSum;
 
         // Add splat value at pixel
-        for (int c = 0; c < 3; ++c)
-            rgb[c] += splatScale * splatRGB[c] / filterIntegral;
+        // for (int c = 0; c < 3; ++c)
+        //     rgb[c] += splatScale * splatRGB[c] / filterIntegral;
+
+        // TODO : compute final estimate value
+        
+     
+        //////////   
+        // PART 3 : 
+        // - 3x3 kernel reliability (n_j) for outlier rejection
+        /////////
+
+        // Post process
+        // weightSum = pixelWindow.weightSum;
+
+        // based on channel numbers
+        for (int i = 0; i < 3; i++) {
+
+            // loop over pixels (used as means storage) for computing real channel value
+            rgb[i] = pixelWindow.buffers[currentBuffer].rgbSum[i] / pixelWindow.totalSamples;
+            splatRGB[i] = Float(pixelWindow.buffers[currentBuffer].splatRGB[i]) / pixelWindow.totalSamples;
+
+            // if (pixelWindow.buffers[currentBuffer].weightSum[i] > 0) {
+            //     rgb[i] = rgb[i] / pixelWindow.buffers[currentBuffer].weightSum[i];
+            // }
+        }
 
         // Convert _rgb_ to output RGB color space
         rgb = outputRGBFromSensorRGB * rgb;
@@ -297,29 +325,54 @@ class RGBFilm : public FilmBase {
 
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
-        
-        // add sample value inside current package
-        pixelWindow.buffers[pixelWindow.index].rgbSum[0] += rgb[0];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[1] += rgb[1];
-        pixelWindow.buffers[pixelWindow.index].rgbSum[2] += rgb[2];
 
-        // add of squared sum of new pixel value
-        pixelWindow.buffers[pixelWindow.index].squaredSum[0] += (rgb[0] * rgb[0]);
-        pixelWindow.buffers[pixelWindow.index].squaredSum[1] += (rgb[1] * rgb[1]);
-        pixelWindow.buffers[pixelWindow.index].squaredSum[2] += (rgb[2] * rgb[2]);
+        // for each channel splat sample S_i into two buffers cascade and get weigthed sample value
+        for (int i = 0; i < 3; i ++) {
 
-        // add of cubic sum of new pixel value
-        pixelWindow.buffers[pixelWindow.index].cubicSum[0] += (rgb[0] * rgb[0] * rgb[0]);
-        pixelWindow.buffers[pixelWindow.index].cubicSum[1] += (rgb[1] * rgb[1] * rgb[1]);
-        pixelWindow.buffers[pixelWindow.index].cubicSum[2] += (rgb[2] * rgb[2] * rgb[2]);
+            double luminance = rgb[i];
 
-        pixelWindow.buffers[pixelWindow.index].weightSum += weight;
+            double N = pixelWindow.totalSamples;
+            double lowerScale = pixelWindow.cascadeStart;
+            double upperScale = lowerScale * pixelWindow.cascadeBase;
+            double weightLower = 0;
+            double weightUppper = 0;
 
-        pixelWindow.index += 1;
-        pixelWindow.nsamples += 1;
+            int baseIndex = 0;  
 
-        if (pixelWindow.index >= pixelWindow.windowSize)
-            pixelWindow.index = 0;
+            //////////
+            // PART 1 : splat samples into cascade buffer B_j and B_{j+1}
+            //////////
+
+            /* find adjacent layers in cascade for <luminance> */
+            while (!(luminance < upperScale) && baseIndex < pixelWindow.windowSize - 2) {
+                lowerScale = upperScale;
+                upperScale *= pixelWindow.cascadeBase;
+                ++baseIndex;
+            }
+            
+            // buffers are (<baseIndex>, <baseIndex>+1) where to add splatting samples
+
+            /* weight for lower buffer */
+            if (luminance <= lowerScale)
+                weightLower = 1.0f;
+            else if (luminance < upperScale)
+                weightLower = std::max(0., (lowerScale / luminance - lowerScale / upperScale) / (1 - lowerScale / upperScale));
+            else // Inf, NaN ...
+                weightLower = 0.0f;
+            
+            /* weight for higher buffer */
+            if (luminance < upperScale)
+                weightUppper = std::max(0., 1 - weightLower);
+            else // out of cascade range, we don't expect this to converge
+                weightUppper = upperScale / luminance;
+
+            // Now we add samples with the corresponding weight into cascade B_j and B_j + 1
+            pixelWindow.buffers[baseIndex].rgbSum[i] += luminance * weightLower;
+            pixelWindow.buffers[baseIndex + 1].rgbSum[i] += luminance * weightUppper;
+
+            pixelWindow.buffers[baseIndex].weightSum[i] += weightLower;
+            pixelWindow.buffers[baseIndex + 1].weightSum[i] += weightUppper;
+        }
     }
 
     PBRT_CPU_GPU
@@ -349,6 +402,7 @@ class RGBFilm : public FilmBase {
         return outputRGBFromSensorRGB * sensorRGB;
     }
 
+
   private:
     // RGBFilm::Pixel Definition
     // struct Pixel {
@@ -361,6 +415,12 @@ class RGBFilm : public FilmBase {
 
 
     // RGBFilm Private Members
+    double rgbSum[3] = {0., 0., 0.};
+    double squaredSum[3] = {0., 0., 0.};
+    double sceneWeightSum = 0;
+    Float currentStd = 0;
+    int currentBuffer = 0;
+
     const RGBColorSpace *colorSpace;
     Float maxComponentValue;
     bool writeFP16;
@@ -516,6 +576,7 @@ inline void Film::AddSample(const Point2i &pFilm, SampledSpectrum L,
                             const SampledWavelengths &lambda,
                             const VisibleSurface *visibleSurface, Float weight) {
     auto add = [&](auto ptr) {
+
         return ptr->AddSample(pFilm, L, lambda, visibleSurface, weight);
     };
     return Dispatch(add);

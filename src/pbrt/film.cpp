@@ -549,8 +549,11 @@ void RGBFilm::WriteImage(ImageMetadata metadata, Float splatScale, unsigned imag
 
     // build folder
     std::string folder_image = std::string(output_folder + "/" + filename_prefix);
-    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "-S" + std::to_string(*Options->pixelSamples) + "-" + indexStr + filename_postfix;
+    std::string temp_filename = output_folder + "/" + filename_prefix + "/" + filename_prefix+ "." + std::to_string(*Options->pixelSamples) + ".buffer." + std::to_string(currentBuffer) + filename_postfix;
+    std::cout << "Save image: " << temp_filename << std::endl;
     
+    currentBuffer = currentBuffer + 1;
+
     // TODO : improve (recursively create folders)
     mkdir(output_folder.c_str(), 0775);
     mkdir(folder_image.c_str(), 0775);
