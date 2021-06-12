@@ -650,7 +650,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                     reliability = localReliability - oneOverK;
 
                 // now add current scale to current color reliability
-                double colorReliability = (pixelWindow.rgbSum[i] / N) * currScale;
+                double colorReliability = pixelWindow.rgbSum[i] * currScale;
 
                 // a minimum image brightness that we always consider reliable
                 colorReliability = std::max(colorReliability, 0.05 * currScale);
