@@ -628,33 +628,29 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
                 double currScale = N / pixelWindow.k / lowerScale;
 
-                // n_bar_j (outlier detection criterion)
-                double n_bar_j = 0;
-                double n_j = 0.;
-
-                n_j += getReliability(p, baseIndex, i, 0, currScale);
-                n_bar_j += getReliability(p, baseIndex, i, 1, currScale);
+                double localReliability = getReliability(p, baseIndex, i, 0, currScale);
+                double globalReliability = getReliability(p, baseIndex, i, 1, currScale);
 
                 // if has picture
                 if (baseIndex - 1 >= 0) {
-                    n_j += getReliability(p, baseIndex - 1, i, 0, currScale * pixelWindow.cascadeBase);
-                    n_bar_j += getReliability(p, baseIndex - 1, i, 1, currScale * pixelWindow.cascadeBase);
+                    localReliability += getReliability(p, baseIndex - 1, i, 0, currScale * pixelWindow.cascadeBase);
+                    globalReliability += getReliability(p, baseIndex - 1, i, 1, currScale * pixelWindow.cascadeBase);
                 }
 
                 if (baseIndex + 1 < pixelWindow.windowSize) {
-                    n_j += getReliability(p, baseIndex + 1, i, 0, currScale / pixelWindow.cascadeBase);
-                    n_bar_j += getReliability(p, baseIndex + 1, i, 1, currScale / pixelWindow.cascadeBase);
+                    localReliability += getReliability(p, baseIndex + 1, i, 0, currScale / pixelWindow.cascadeBase);
+                    globalReliability += getReliability(p, baseIndex + 1, i, 1, currScale / pixelWindow.cascadeBase);
                 }
    
-                double reliability = n_bar_j - oneOverK;
+                double reliability = globalReliability - oneOverK;
  
                 // check if above minimum sampling threshold
                 if (reliability >= 0.)
                     // then use per-pixel reliability
-                    reliability = n_j - oneOverK;
+                    reliability = localReliability - oneOverK;
 
                 // now add current scale to current color reliability
-                double colorReliability = pixelWindow.rgbSum[i] * currScale;
+                double colorReliability = (pixelWindow.rgbSum[i] / N) * currScale;
 
                 // a minimum image brightness that we always consider reliable
                 colorReliability = std::max(colorReliability, 0.05 * currScale);
@@ -669,7 +665,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
                 //colorReliability *= mix(mix(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
                 double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
-                colorReliability *= x * (1. - optimizeForError) + 1. * optimizeForError;
+                colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
 
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);

@@ -272,8 +272,8 @@ class RGBFilm : public FilmBase {
                     PixelWindow &neighborPixelWindow = pixels[xy];
 
                     // TODO : check if correct
-                    neighborPixelWindow.buffers[baseIndex].rgbSum[channel] *= scale;
-                    val += neighborPixelWindow.buffers[baseIndex].rgbSum[channel];
+                    // neighborPixelWindow.buffers[baseIndex].rgbSum[channel] *= scale;
+                    val += (neighborPixelWindow.buffers[baseIndex].rgbSum[channel] / neighborPixelWindow.N) * scale;
                 }
                 
                 if (++x > r) break;
