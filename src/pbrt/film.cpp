@@ -567,89 +567,69 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     PixelFormat format = writeFP16 ? PixelFormat::Half : PixelFormat::Float;
     Image image(format, Point2i(pixelBounds.Diagonal()), {"R", "G", "B"});
 
-    // Compute n_j here for each pixels
-    // In order to quick compute n_bar_j later (global reliability)
-    /*ParallelFor2D(pixelBounds, [&](Point2i p) {
-
-        PixelWindow &pixelWindow = pixels[p];
-
-        int N = pixelWindow.N;
-  
-        for (int i = 0; i < 3; i++) {
-            
-            // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
-            double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
-            int baseIndex = 0;
-
-            // reset by default
-            pixelWindow.buffers[baseIndex].n_j[i] = 0.;
-
-            while (baseIndex < pixelWindow.windowSize - 1) {
-                lowerScale *= pixelWindow.cascadeBase;
-
-                // N / kappa / b^i_<curr>;
-                double currScale = N / pixelWindow.k / lowerScale;
-
-                pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex].rgbSum[i] * currScale;
-
-                // if has picture
-                if (baseIndex - 1 >= 0)
-                    pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex - 1].rgbSum[i] / (currScale * pixelWindow.cascadeBase);
-
-                if (baseIndex + 1 < pixelWindow.windowSize)
-                    pixelWindow.buffers[baseIndex].n_j[i] += pixelWindow.buffers[baseIndex + 1].rgbSum[i] / (currScale / pixelWindow.cascadeBase);
-
-                // TODO : check if lower scale is correct
-                // lowerScale *= pixelWindow.cascadeBase;
-                ++baseIndex;
-            }
-        }
-    });*/
-
     ParallelFor2D(pixelBounds, [&](Point2i p) {
 
         PixelWindow &pixelWindow = pixels[p];
 
         int N = pixelWindow.N;
         double oneOverK = 1 / pixelWindow.k;
+        double currScale = N / pixelWindow.k / lowerScale;
+        double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
+        int baseIndex = 0;
 
+        // Reinit data if new image
         for (int i = 0; i < 3; i++) {
-
-            // reinitialize data for new output image
             pixelWindow.rgbSum[i] = 0.;
+        }
+
+        while (baseIndex < pixelWindow.windowSize - 1) {
             
-            double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
-            int baseIndex = 0;
+            // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
+            // lowerScale *= pixelWindow.cascadeBase;
 
-            while (baseIndex < pixelWindow.windowSize - 1) {
-                
-                // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
-                lowerScale *= pixelWindow.cascadeBase;
+            RGB localReliability = getReliability(p, baseIndex, 0, currScale);
+            RGB globalReliability = getReliability(p, baseIndex, 1, currScale);
 
-                double currScale = N / pixelWindow.k / lowerScale;
+            // if has picture
+            if (baseIndex - 1 >= 0) {
+                localReliability += getReliability(p, baseIndex - 1, 0, currScale * pixelWindow.cascadeBase);
+                globalReliability += getReliability(p, baseIndex - 1, 1, currScale * pixelWindow.cascadeBase);
+            }
 
-                double localReliability = getReliability(p, baseIndex, i, 0, currScale);
-                double globalReliability = getReliability(p, baseIndex, i, 1, currScale);
+            if (baseIndex + 1 < pixelWindow.windowSize) {
+                localReliability += getReliability(p, baseIndex + 1, 0, currScale / pixelWindow.cascadeBase);
+                globalReliability += getReliability(p, baseIndex + 1, 1, currScale / pixelWindow.cascadeBase);
+            }
 
-                // if has picture
-                if (baseIndex - 1 >= 0) {
-                    localReliability += getReliability(p, baseIndex - 1, i, 0, currScale * pixelWindow.cascadeBase);
-                    globalReliability += getReliability(p, baseIndex - 1, i, 1, currScale * pixelWindow.cascadeBase);
-                }
+            // ToDo compute luminance
+            // XYZ localXYZ = colorSpace->ToXYZ(localReliability);
+            // XYZ globalXYZ = colorSpace->ToXYZ(globalReliability);
+            
+            // double localR = localXYZ[0] * luminanceConvert[0] 
+            //                 + localXYZ[1] + luminanceConvert[1] 
+            //                 + localXYZ[2] * luminanceConvert[2];
 
-                if (baseIndex + 1 < pixelWindow.windowSize) {
-                    localReliability += getReliability(p, baseIndex + 1, i, 0, currScale / pixelWindow.cascadeBase);
-                    globalReliability += getReliability(p, baseIndex + 1, i, 1, currScale / pixelWindow.cascadeBase);
-                }
-   
-                double reliability = globalReliability - oneOverK;
- 
+            // double globalR = globalXYZ[0] * luminanceConvert[0] 
+            //                 + globalXYZ[1] + luminanceConvert[1] 
+            //                 + globalXYZ[2] * luminanceConvert[2];
+
+            for (int i = 0; i < 3; i++) {
+                double reliability = globalReliability[i] - oneOverK;
+
                 // check if above minimum sampling threshold
                 if (reliability >= 0.)
                     // then use per-pixel reliability
-                    reliability = localReliability - oneOverK;
+                    reliability = localReliability[i] - oneOverK;
 
                 // now add current scale to current color reliability
+                // RGB rgbSum(pixelWindow.rgbSum[0], pixelWindow.rgbSum[1], pixelWindow.rgbSum[2]);
+                // XYZ xyzSum = colorSpace->ToXYZ(rgbSum);
+
+                // double luminanceSum = xyzSum[0] * luminanceConvert[0] 
+                //                 + xyzSum[1] + luminanceConvert[1] 
+                //                 + xyzSum[2] * luminanceConvert[2];
+
+                // double colorReliability = luminanceSum * currScale;
                 double colorReliability = pixelWindow.rgbSum[i] * currScale;
 
                 // a minimum image brightness that we always consider reliable
@@ -663,9 +643,9 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
                 // $x \times (1 - a) + y \times a$
 
-                //colorReliability *= mix(mix(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
-                double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
-                colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
+                colorReliability *= pbrt::Lerp(pbrt::Lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
+                // double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
+                // colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
 
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
@@ -677,64 +657,18 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // TODO: check if currentScale is needed or not there (scale use on previous computation)
                 // See computation of n_j and n_bar_j:
                 // - vec4 c = texture2D(layer, (coord + vec2(x, y)) / size, 0.);
-			    // - c *= scale;
-			    // - val += c;
+                // - c *= scale;
+                // - val += c;
 
                 // Divided by N the current buffer data
                 // std::cout << p << "[" << baseIndex << "]: " << reliability << std::endl;
+                // for (int i = 0; i < 3; i++)
                 pixelWindow.rgbSum[i] += reliability * (pixelWindow.buffers[baseIndex].rgbSum[i] / N);
-                    
-                // TODO : check if lower scale is correct
-                // lowerScale *= pixelWindow.cascadeBase;
-                ++baseIndex;
-
-                // Previous work...
-                /////////
-                // PART 3 : escape or not outlier value (based on kappa parameter)
-                /////////
-
-                // double r_star = N / n_bar_j; // approximated r*(S_i)
-
-                // // std::cout << "r_star: " << r_star << std::endl;
-                // // std::cout << "N / pixelWindow.k: " << N / pixelWindow.k << std::endl;
-
-                // if (r_star > (N / pixelWindow.k)) {
-                //     // std::cout << "Reject sample (outlier detected)" << std::endl;
-                //     continue;
-                // }
-
-                /////////
-                // PART 4 : Add sample with specific weighted param
-                /////////
-
-                // Compute the expected weight for current sample
-                // Float rc_Si = N / (pixelWindow.n_j - pixelWindow.kmin); // N / (n_j - k_{min})
-
-                // depending of first sample or not, do something different
-                // if (pixelWindow.nsamples == 0) {
-                    
-                //     Float wc;
-
-                //     // wc 
-                //     if (pixelWindow.n_j < (pixelWindow.k + pixelWindow.kmin))
-                //         wc = (pixelWindow.n_j - pixelWindow.kmin) / pixelWindow.k;
-                //     else
-                //         wc = N / (pixelWindow.k * rc_Si);
-
-                //     if (wc > 0.) {
-                //         hasContribution = true;
-                //         pixelWindow.rgbSum[i] += (1. / N) * wc * luminance;
-                //     }
-                // } else {
-
-                //     Float rv_Si = lowerScale / pixelWindow.rgbSum[i]; // b^j / E_{min}[F]
-                //     Float r_si = std::min(rc_Si, rv_Si);
-                //     Float w = N / (pixelWindow.k * r_si);
-
-                //     if (w > 0.)
-                //         pixelWindow.rgbSum[i] += (1. / N) * w * luminance;
-                // }
             }
+                
+            // TODO : check if lower scale is correct
+            lowerScale *= pixelWindow.cascadeBase;
+            ++baseIndex;
         }
     });
 

@@ -257,9 +257,9 @@ class RGBFilm : public FilmBase {
     };
 
     PBRT_CPU_GPU
-    double getReliability(Point2i p, int baseIndex, int channel, int r, double scale) {
+    RGB getReliability(Point2i p, int baseIndex, int r, double scale) {
         
-        double val = 0.;
+        RGB val;
 
         int y = -r;
         for (int j = 0; j < 3; ++j) { // 3 x 3 Kernel
@@ -273,7 +273,8 @@ class RGBFilm : public FilmBase {
 
                     // TODO : check if correct
                     // neighborPixelWindow.buffers[baseIndex].rgbSum[channel] *= scale;
-                    val += (neighborPixelWindow.buffers[baseIndex].rgbSum[channel] / neighborPixelWindow.N) * scale;
+                    for (int i = 0; i < 3; i++)
+                        val[i] += (neighborPixelWindow.buffers[baseIndex].rgbSum[i] / neighborPixelWindow.N) * scale;
                 }
                 
                 if (++x > r) break;
@@ -281,7 +282,7 @@ class RGBFilm : public FilmBase {
             if (++y > r) break;
         }
 
-        return val / double((2*r+1)*(2*r+1));
+        return val / Float((2*r+1)*(2*r+1));
     }
 
     PBRT_CPU_GPU
@@ -345,13 +346,15 @@ class RGBFilm : public FilmBase {
             rgb *= maxComponentValue / m;
         }
 
+        // XYZ xyz = colorSpace->ToXYZ(rgb);
+
         DCHECK(InsideExclusive(pFilm, pixelBounds));
 
         // Update pixel values with filtered sample contribution
         PixelWindow &pixelWindow = pixels[pFilm];
 
-        // for each channel splat sample S_i into two buffers cascade and get weigthed sample value
-        for (int i = 0; i < 3; i ++) {
+        // ToDo: check if necessary to use this luminance
+        for (int i = 0; i < 3; i++) {
 
             double luminance = rgb[i];
 
@@ -391,11 +394,12 @@ class RGBFilm : public FilmBase {
                 weightUppper = upperScale / luminance;
 
             // Now we add samples with the corresponding weight into cascade B_j and B_j + 1
-            pixelWindow.buffers[baseIndex].rgbSum[i] += luminance * weightLower;
-            pixelWindow.buffers[baseIndex + 1].rgbSum[i] += luminance * weightUppper;
 
-            pixelWindow.buffers[baseIndex].weightSum += weightLower;
-            pixelWindow.buffers[baseIndex + 1].weightSum += weightUppper;
+            pixelWindow.buffers[baseIndex].rgbSum[i] += rgb[i] * weightLower;
+            pixelWindow.buffers[baseIndex + 1].rgbSum[i] += rgb[i] * weightUppper;
+
+            pixelWindow.buffers[baseIndex].weightSum[i] += weightLower;
+            pixelWindow.buffers[baseIndex + 1].weightSum[i] += weightUppper;
         }
     }
 
@@ -446,6 +450,7 @@ class RGBFilm : public FilmBase {
     int nsamples = 0;
 
     const RGBColorSpace *colorSpace;
+    Point3f luminanceConvert = Point3f(0.212671, 0.715160, 0.072169);
     Float maxComponentValue;
     bool writeFP16;
     Float filterIntegral;

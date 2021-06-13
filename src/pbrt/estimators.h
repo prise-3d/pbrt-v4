@@ -47,16 +47,15 @@ struct PixelBuffer {
     // here we store the rgbSum of pixel
     double rgbSum[3] = {0., 0., 0.};
     AtomicDouble splatRGB[3];
-    double weightSum = 0.;
+    double weightSum[3] = {0., 0., 0.};
 
     void Clear() {
 
         for (int i = 0; i < 3; i++) {
             rgbSum[i] = 0.;
             splatRGB[i] = 0.;
+            weightSum[i] = 0.;
         }
-
-        weightSum = 0.;
     }
 };
 
