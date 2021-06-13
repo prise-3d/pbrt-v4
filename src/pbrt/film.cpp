@@ -573,8 +573,8 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
         int N = pixelWindow.N;
         double oneOverK = 1 / pixelWindow.k;
-        double currScale = N / pixelWindow.k / lowerScale;
         double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
+        double currScale = N / pixelWindow.k / lowerScale;
         int baseIndex = 0;
 
         // Reinit data if new image
