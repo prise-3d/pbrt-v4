@@ -647,9 +647,9 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
                 // $x \times (1 - a) + y \times a$
 
-                // colorReliability *= pbrt::Lerp(pbrt::Lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
-                double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
-                colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
+                colorReliability *= pbrt::Lerp(pbrt::Lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
+                // double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
+                // colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
 
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
