@@ -573,8 +573,9 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
 
         int N = pixelWindow.N;
         double oneOverK = 1 / pixelWindow.k;
-        double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
-        double currScale = N / pixelWindow.k / lowerScale;
+        // double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
+        // as in https://github.com/tszirr/ic.js/blob/5bc013ea145f79073c9605f7503f54a15563058e/rw/rw.html#L667
+        double currScale = pixelWindow.cascadeStart; 
         int baseIndex = 0;
 
         // Reinit data if new image
@@ -583,22 +584,24 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
         }
 
         while (baseIndex < pixelWindow.windowSize - 1) {
+
+            double scale = N / currScale / pixelWindow.k;
             
             // Based on: https://github.com/tszirr/ic.js/blob/master/rw/reweight.fs
             // lowerScale *= pixelWindow.cascadeBase;
 
-            RGB localReliability = getReliability(p, baseIndex, 0, currScale);
-            RGB globalReliability = getReliability(p, baseIndex, 1, currScale);
+            RGB localReliability = getReliability(p, baseIndex, 0, scale);
+            RGB globalReliability = getReliability(p, baseIndex, 1, scale);
 
             // if has picture
             if (baseIndex - 1 >= 0) {
-                localReliability += getReliability(p, baseIndex - 1, 0, currScale * pixelWindow.cascadeBase);
-                globalReliability += getReliability(p, baseIndex - 1, 1, currScale * pixelWindow.cascadeBase);
+                localReliability += getReliability(p, baseIndex - 1, 0, scale * pixelWindow.cascadeBase);
+                globalReliability += getReliability(p, baseIndex - 1, 1, scale * pixelWindow.cascadeBase);
             }
 
             if (baseIndex + 1 < pixelWindow.windowSize) {
-                localReliability += getReliability(p, baseIndex + 1, 0, currScale / pixelWindow.cascadeBase);
-                globalReliability += getReliability(p, baseIndex + 1, 1, currScale / pixelWindow.cascadeBase);
+                localReliability += getReliability(p, baseIndex + 1, 0, scale / pixelWindow.cascadeBase);
+                globalReliability += getReliability(p, baseIndex + 1, 1, scale / pixelWindow.cascadeBase);
             }
 
             // ToDo compute luminance
@@ -614,6 +617,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
             //                 + globalXYZ[2] * luminanceConvert[2];
 
             for (int i = 0; i < 3; i++) {
+
                 double reliability = globalReliability[i] - oneOverK;
 
                 // check if above minimum sampling threshold
@@ -630,10 +634,10 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 //                 + xyzSum[2] * luminanceConvert[2];
 
                 // double colorReliability = luminanceSum * currScale;
-                double colorReliability = pixelWindow.rgbSum[i] * currScale;
+                double colorReliability = pixelWindow.rgbSum[i] * scale;
 
                 // a minimum image brightness that we always consider reliable
-                colorReliability = std::max(colorReliability, 0.05 * currScale);
+                colorReliability = std::max(colorReliability, 0.05 * scale);
 
                 // if not interested in exact expected value estimation, can usually accept a bit
                 // more variance relative to the image brightness we already have
@@ -647,7 +651,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
                 // colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
 
-                reliability = (reliability + colorReliability) * .5;
+                // reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
                 
                 // allow re-weighting to be disabled easily
@@ -667,7 +671,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
             }
                 
             // TODO : check if lower scale is correct
-            lowerScale *= pixelWindow.cascadeBase;
+            currScale *= pixelWindow.cascadeBase;
             ++baseIndex;
         }
     });
