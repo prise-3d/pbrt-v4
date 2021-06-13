@@ -647,10 +647,11 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // TODO: add linear interpolation (mix function) (std::lerp in C++ 20 standard)
                 // $x \times (1 - a) + y \times a$
 
-                colorReliability *= pbrt::Lerp(pbrt::Lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
-                // double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
-                // colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
+                // colorReliability *= pbrt::Lerp(pbrt::Lerp(1., pixelWindow.cascadeBase, pixelWindow.windowSize), 1., optimizeForError);
+                double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
+                colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
 
+                // Disable color reliability here
                 reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
                 
@@ -667,7 +668,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // Divided by N the current buffer data
                 // std::cout << p << "[" << baseIndex << "]: " << reliability << std::endl;
                 // for (int i = 0; i < 3; i++)
-                pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i];
+                pixelWindow.rgbSum[i] += reliability * (pixelWindow.buffers[baseIndex].rgbSum[i] / N);
             }
                 
             // TODO : check if lower scale is correct
