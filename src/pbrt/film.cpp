@@ -651,7 +651,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // double x = 1. * (1. - pixelWindow.windowSize) + pixelWindow.cascadeBase * pixelWindow.windowSize;
                 // colorReliability *= (x * (1. - optimizeForError) + 1. * optimizeForError);
 
-                // reliability = (reliability + colorReliability) * .5;
+                reliability = (reliability + colorReliability) * .5;
                 reliability = std::clamp(reliability, 0., 1.);
                 
                 // allow re-weighting to be disabled easily
