@@ -274,7 +274,7 @@ class RGBFilm : public FilmBase {
                     // TODO : check if correct
                     // neighborPixelWindow.buffers[baseIndex].rgbSum[channel] *= scale;
                     for (int i = 0; i < 3; i++)
-                        val[i] += (neighborPixelWindow.buffers[baseIndex].rgbSum[i] / neighborPixelWindow.N) * scale;
+                        val[i] += neighborPixelWindow.buffers[baseIndex].rgbSum[i] * scale;
                 }
                 
                 if (++x > r) break;
@@ -323,8 +323,8 @@ class RGBFilm : public FilmBase {
         for (int i = 0; i < 3; i++) {
 
             // loop over pixels (used as means storage) for computing real channel value
-            rgb[i] = pixelWindow.rgbSum[i];
-            splatRGB[i] = Float(pixelWindow.splatRGB[i]);
+            rgb[i] = pixelWindow.rgbSum[i] / pixelWindow.N;
+            splatRGB[i] = Float(pixelWindow.splatRGB[i]) / pixelWindow.N;
         }
 
         // Convert _rgb_ to output RGB color space

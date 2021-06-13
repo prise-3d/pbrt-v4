@@ -667,7 +667,7 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
                 // Divided by N the current buffer data
                 // std::cout << p << "[" << baseIndex << "]: " << reliability << std::endl;
                 // for (int i = 0; i < 3; i++)
-                pixelWindow.rgbSum[i] += reliability * (pixelWindow.buffers[baseIndex].rgbSum[i] / N);
+                pixelWindow.rgbSum[i] += reliability * pixelWindow.buffers[baseIndex].rgbSum[i];
             }
                 
             // TODO : check if lower scale is correct
