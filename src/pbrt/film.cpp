@@ -567,11 +567,15 @@ Image RGBFilm::GetImage(ImageMetadata *metadata, Float splatScale) {
     PixelFormat format = writeFP16 ? PixelFormat::Half : PixelFormat::Float;
     Image image(format, Point2i(pixelBounds.Diagonal()), {"R", "G", "B"});
 
+    // new image
+    currentImage += 1;
+
     ParallelFor2D(pixelBounds, [&](Point2i p) {
 
         PixelWindow &pixelWindow = pixels[p];
 
-        int N = pixelWindow.N;
+        int N = pixelWindow.N * currentImage;
+        std::cout << "N value is " << N << std::endl;
         double oneOverK = 1 / pixelWindow.k;
         // double lowerScale = pixelWindow.cascadeStart; // for baseIndex = 0
         // as in https://github.com/tszirr/ic.js/blob/5bc013ea145f79073c9605f7503f54a15563058e/rw/rw.html#L667

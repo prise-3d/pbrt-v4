@@ -76,7 +76,7 @@ struct PixelWindow {
     double cascadeBase = std::pow(262144, 1. / (double)maxnbuffers); // change using b = j^sqrt(S_{max}) where S_{max} = 262144
     int kmin = 1;
     int k = 32;
-    int N = *Options->pixelSamples * *Options->nimages;
+    int N = *Options->pixelSamples;
 };
 
 // Base Estimator class

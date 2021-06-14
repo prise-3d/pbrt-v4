@@ -260,6 +260,8 @@ class RGBFilm : public FilmBase {
     RGB getReliability(Point2i p, int baseIndex, int r, double scale) {
         
         RGB val;
+        PixelWindow &pixelWindow = pixels[p];
+        int N = pixelWindow.N * currentImage;
 
         int y = -r;
         for (int j = 0; j < 3; ++j) { // 3 x 3 Kernel
@@ -274,7 +276,7 @@ class RGBFilm : public FilmBase {
                     // TODO : check if correct
                     // neighborPixelWindow.buffers[baseIndex].rgbSum[channel] *= scale;
                     for (int i = 0; i < 3; i++)
-                        val[i] += (neighborPixelWindow.buffers[baseIndex].rgbSum[i] / neighborPixelWindow.N) * scale;
+                        val[i] += (neighborPixelWindow.buffers[baseIndex].rgbSum[i] / N) * scale;
                 }
                 
                 if (++x > r) break;
@@ -358,7 +360,7 @@ class RGBFilm : public FilmBase {
 
             double luminance = rgb[i];
 
-            double N = pixelWindow.N;
+            double N = pixelWindow.N * currentImage;
             double lowerScale = pixelWindow.cascadeStart;
             double upperScale = lowerScale * pixelWindow.cascadeBase;
             double weightLower = 0;
@@ -448,6 +450,7 @@ class RGBFilm : public FilmBase {
     double sceneWeightSum = 0;
     Float currentStd = 0;
     int nsamples = 0;
+    int currentImage = 0;
 
     const RGBColorSpace *colorSpace;
     Point3f luminanceConvert = Point3f(0.212671, 0.715160, 0.072169);
