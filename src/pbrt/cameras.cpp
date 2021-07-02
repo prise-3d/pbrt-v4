@@ -292,6 +292,9 @@ Camera Camera::Create(const std::string &name, const ParameterDictionary &parame
     else if (name == "stereoscopic") // P3D updates
         camera = StereoscopicCamera::Create(parameters, cameraTransform, film, medium, loc,
                                          alloc);
+    else if (name == "autostereoscopic") // P3D updates
+        camera = AutoStereoscopicCamera::Create(parameters, cameraTransform, film, medium, loc,
+                                         alloc);
     else if (name == "ODS") //P3D updates
         camera = ODSCamera::Create(parameters, cameraTransform, film, medium, loc,
                                          alloc);
